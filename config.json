@@ -11,12 +11,13 @@
   "model_list": [
     {
       "model_name": "gemini-flash",
-      "model": "google/gemini-1.5-flash",
-      "api_key": "PLACEHOLDER_GOOGLE_API_KEY"
+      "model": "gemini-1.5-flash",
+      "api_key": "PLACEHOLDER_GOOGLE_API_KEY",
+      "provider": "gemini"
     }
   ],
   "providers": {
-    "google": {
+    "gemini": {
       "api_key": "PLACEHOLDER_GOOGLE_API_KEY"
     }
   },
