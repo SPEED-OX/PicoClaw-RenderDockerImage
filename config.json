@@ -28,9 +28,9 @@
   },
   "channels": {
     "telegram": {
-      "enable": true,
+      "enabled": true,
       "token": "PLACEHOLDER_TELEGRAM_TOKEN",
-      "allow_users": ["PLACEHOLDER_TELEGRAM_USER"]
+      "allowFrom": ["PLACEHOLDER_TELEGRAM_USER"]
     }
   }
 }
