@@ -2,12 +2,20 @@
   "agents": {
     "defaults": {
       "workspace": "~/.picoclaw/workspace",
-      "model": "minimax/MiniMax-M2.5",
+      "model": "deepseek-r1",
       "max_tokens": 8192,
       "temperature": 0.7,
       "max_tool_iterations": 20
     }
   },
+  "model_list": [
+    {
+      "model_name": "deepseek-r1",
+      "model": "deepseek/deepseek-r1-0528:free",
+      "api_key": "PLACEHOLDER_OPENROUTER_API_KEY",
+      "provider": "openrouter"
+    }
+  ],
   "providers": {
     "openrouter": {
       "api_key": "PLACEHOLDER_OPENROUTER_API_KEY",
