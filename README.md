@@ -1,8 +1,8 @@
 ---
-title: PicoClaw Bot
-emoji: 🏃
-colorFrom: indigo
-colorTo: purple
+title: Openclaw Bot
+emoji: 📚
+colorFrom: green
+colorTo: pink
 sdk: docker
 pinned: false
 ---

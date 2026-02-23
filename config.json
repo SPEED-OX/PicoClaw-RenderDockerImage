@@ -1,0 +1,28 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.picoclaw/workspace",
+      "model": "openrouter/google/gemini-2.0-flash-001",
+      "max_tokens": 8192,
+      "temperature": 0.7,
+      "max_tool_iterations": 20
+    }
+  },
+  "providers": {
+    "openrouter": {
+      "api_key": "PLACEHOLDER_OPENROUTER_API_KEY",
+      "api_base": "https://openrouter.ai/api/v1"
+    }
+  },
+  "gateway": {
+    "enable": true,
+    "address": "0.0.0.0:7860"
+  },
+  "channels": {
+    "telegram": {
+      "enable": true,
+      "token": "PLACEHOLDER_TELEGRAM_TOKEN",
+      "allow_users": ["PLACEHOLDER_TELEGRAM_USER"]
+    }
+  }
+}
