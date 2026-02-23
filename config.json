@@ -2,7 +2,7 @@
   "agents": {
     "defaults": {
       "workspace": "~/.picoclaw/workspace",
-      "model": "gemini-flash",
+      "model": "llama-3.3-70b",
       "max_tokens": 8192,
       "temperature": 0.7,
       "max_tool_iterations": 20
@@ -10,15 +10,14 @@
   },
   "model_list": [
     {
-      "model_name": "gemini-flash",
-      "model": "gemini-1.5-flash",
-      "api_key": "PLACEHOLDER_GOOGLE_API_KEY",
-      "provider": "gemini"
+      "model_name": "llama-3.3-70b",
+      "model": "groq/llama-3.3-70b-versatile",
+      "api_key": "PLACEHOLDER_GROQ_API_KEY"
     }
   ],
   "providers": {
-    "gemini": {
-      "api_key": "PLACEHOLDER_GOOGLE_API_KEY"
+    "groq": {
+      "api_key": "PLACEHOLDER_GROQ_API_KEY"
     }
   },
   "gateway": {

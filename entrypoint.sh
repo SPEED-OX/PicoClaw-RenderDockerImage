@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-sed -i "s|PLACEHOLDER_GOOGLE_API_KEY|${GOOGLE_API_KEY}|g" config.json
+sed -i "s|PLACEHOLDER_GROQ_API_KEY|${GROQ_API_KEY}|g" config.json
 sed -i "s|PLACEHOLDER_TELEGRAM_TOKEN|${TELEGRAM_TOKEN}|g" config.json
 sed -i "s|PLACEHOLDER_TELEGRAM_USER|${TELEGRAM_USER}|g" config.json
 
@@ -15,7 +15,7 @@ echo "=============================================="
 echo ""
 echo "📋 Configuration:"
 echo "   - Model: $(grep -o '"model": *"[^"]*"' config.json | head -1 | cut -d'"' -f4)"
-echo "   - Provider: Google AI Studio"
+echo "   - Provider: Groq (Free)"
 echo "   - Channel: Telegram"
 echo ""
 echo "🤖 Model List:"
