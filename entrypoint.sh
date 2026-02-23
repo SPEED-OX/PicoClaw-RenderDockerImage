@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-sed -i "s|PLACEHOLDER_OPENROUTER_API_KEY|${OPENROUTER_API_KEY}|g" config.json
+sed -i "s|PLACEHOLDER_GOOGLE_API_KEY|${GOOGLE_API_KEY}|g" config.json
 sed -i "s|PLACEHOLDER_TELEGRAM_TOKEN|${TELEGRAM_TOKEN}|g" config.json
 sed -i "s|PLACEHOLDER_TELEGRAM_USER|${TELEGRAM_USER}|g" config.json
 
@@ -15,10 +15,10 @@ echo "=============================================="
 echo ""
 echo "📋 Configuration:"
 echo "   - Model: $(grep -o '"model": *"[^"]*"' config.json | head -1 | cut -d'"' -f4)"
-echo "   - Provider: OpenRouter"
+echo "   - Provider: Google AI Studio"
 echo "   - Channel: Telegram"
 echo ""
-echo "🤖 Model List (fallback order):"
+echo "🤖 Model List:"
 grep -A 3 '"model_name":' config.json | grep 'model_name\|model"' | while read -r line; do
   name=$(echo "$line" | grep -o '"model_name": *"[^"]*"' | cut -d'"' -f4)
   model=$(grep -A 1 "$name" config.json | grep '"model":' | cut -d'"' -f4)
