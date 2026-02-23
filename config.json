@@ -2,7 +2,7 @@
   "agents": {
     "defaults": {
       "workspace": "~/.picoclaw/workspace",
-      "model": "deepseek-r1",
+      "model": "gemini-flash",
       "max_tokens": 8192,
       "temperature": 0.7,
       "max_tool_iterations": 20
@@ -10,8 +10,26 @@
   },
   "model_list": [
     {
-      "model_name": "deepseek-r1",
+      "model_name": "gemini-flash",
+      "model": "google/gemini-2.0-flash-001",
+      "api_key": "PLACEHOLDER_OPENROUTER_API_KEY",
+      "provider": "openrouter"
+    },
+    {
+      "model_name": "claude-haiku",
+      "model": "anthropic/claude-3-haiku-20240307",
+      "api_key": "PLACEHOLDER_OPENROUTER_API_KEY",
+      "provider": "openrouter"
+    },
+    {
+      "model_name": "deepseek-r1-free",
       "model": "deepseek/deepseek-r1-0528:free",
+      "api_key": "PLACEHOLDER_OPENROUTER_API_KEY",
+      "provider": "openrouter"
+    },
+    {
+      "model_name": "llama-3.1-70b",
+      "model": "meta-llama/llama-3.1-70b-instruct",
       "api_key": "PLACEHOLDER_OPENROUTER_API_KEY",
       "provider": "openrouter"
     }
