@@ -69,7 +69,7 @@ picoclaw/
 ### 1. LLM Brain (llm.py)
 - Calls OpenRouter API (`https://openrouter.ai/api/v1/chat/completions`)
 - Model is set via `OPENROUTER_MODEL` env var (default: `mistralai/mistral-7b-instruct:free`)
-- Maintains per-chat conversation history stored in MySQL (last N messages via MAX_HISTORY)
+- Maintains per-chat conversation history stored in MySQL (MAX_HISTORY message pairs per chat)
 - System prompt defines PicoClaw's personality and capabilities
 - Used as fallback for any message that isn't a specific command
 
@@ -83,7 +83,7 @@ picoclaw/
 - `/remind <time> <message>` — e.g. `/remind 10m Call mom`
 - Supports: `30s`, `10m`, `2h`, `tomorrow 9am`
 - Sends Telegram message to user when reminder fires
-- Reminders stored in MySQL, loaded on startup (persistent across restarts)
+- Reminders stored in MySQL, loaded on startup (persistent until fired or cancelled)
 
 ### 4. Task Execution (tasks.py)
 - `/run <command>` — executes shell command inside container
@@ -259,6 +259,24 @@ The project is "done" when:
 - `/remind 1m test` fires after 1 minute
 - Only the owner's chat ID can use the bot
 - Deploys to Render free tier without modification
+
+---
+
+## Known Fixes & Decisions
+
+1. **db.py: MySQL reconnect resilience** — Added `ping=True` to create_pool() and a retry decorator that retries once on OperationalError to handle cPanel idle disconnects.
+
+2. **search.py: DDGS instantiation** — Moved DDGS() instantiation inside search_web() function so a failure doesn't crash the bot on import.
+
+3. **scheduler.py: Async job execution** — Added `executor='asyncio'` to AsyncIOScheduler to ensure async reminder jobs fire reliably.
+
+4. **bot.py: Silent reject unauthorized users** — Removed reply to unauthorized chat IDs in check_access() - returns False silently without leaking that the bot exists.
+
+5. **llm.py: Empty choices guard** — Wrapped `data["choices"][0]["message"]["content"]` in try/except with fallback "No response from model." to prevent KeyError crashes.
+
+6. **tasks.py: Timeout placement** — Fixed asyncio.wait_for to wrap process.communicate() instead of create_subprocess_shell() so timeout actually triggers.
+
+7. **tasks.py/db.py: Command log cleanup** — Added cleanup_old_logs() function that deletes logs older than 30 days per chat_id, called after each log_command() insert.
 
 ---
 

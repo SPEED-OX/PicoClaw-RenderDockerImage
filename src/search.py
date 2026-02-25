@@ -2,10 +2,9 @@ import asyncio
 from duckduckgo_search import DDGS
 from src import llm
 
-ddgs = DDGS()
-
 async def search_web(query: str, max_results: int = 3) -> str:
     try:
+        ddgs = DDGS()
         results = await asyncio.to_thread(ddgs.text, query, max_results=max_results)
         
         if not results:

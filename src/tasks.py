@@ -17,16 +17,13 @@ async def run_command(chat_id: int, command: str) -> Tuple[str, bool]:
         return f"Command not allowed. Allowed: {', '.join(ALLOWED_COMMANDS)}", False
 
     try:
-        result = await asyncio.wait_for(
-            asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            ),
-            timeout=30.0
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
         
-        stdout, stderr = await result.communicate()
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
         output = stdout.decode() if stdout else ""
         error = stderr.decode() if stderr else ""
 

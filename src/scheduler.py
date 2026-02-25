@@ -6,7 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from src import config, db
 
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(executor='asyncio')
 
 ReminderCallback = Callable[[int, str], Awaitable[None]]
 

@@ -8,13 +8,10 @@ START_TIME = time.time()
 
 def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     chat_id = update.effective_chat.id
-    if not config.is_chat_allowed(chat_id):
-        return False
-    return True
+    return config.is_chat_allowed(chat_id)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update, context):
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="This is a personal bot, not authorized.")
         return
     await context.bot.send_message(
         chat_id=update.effective_chat.id,

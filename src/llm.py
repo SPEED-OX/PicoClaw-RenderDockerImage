@@ -44,7 +44,10 @@ async def call_llm(chat_id: int, user_message: str) -> str:
             )
             response.raise_for_status()
             data = response.json()
-            assistant_reply = data["choices"][0]["message"]["content"]
+            try:
+                assistant_reply = data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError):
+                assistant_reply = "No response from model."
 
             await db.add_message(chat_id, "user", user_message)
             await db.add_message(chat_id, "assistant", assistant_reply)
@@ -79,6 +82,9 @@ async def summarize_with_llm(prompt: str) -> str:
             )
             response.raise_for_status()
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            try:
+                return data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError):
+                return "No response from model."
         except Exception as e:
             return f"Summary error: {str(e)}"

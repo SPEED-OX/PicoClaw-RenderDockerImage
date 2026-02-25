@@ -1,10 +1,23 @@
 import aiomysql
 import asyncio
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Any, Callable, TypeVar
 from src import config
 
 pool: Optional[aiomysql.Pool] = None
+
+T = TypeVar('T')
+
+def retry_on_operational_error(func: Callable[..., T]) -> Callable[..., T]:
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except aiomysql.OperationalError:
+            try:
+                return await func(*args, **kwargs)
+            except aiomysql.OperationalError as e:
+                raise e
+    return wrapper
 
 async def init_db():
     global pool
@@ -17,6 +30,7 @@ async def init_db():
         autocommit=True,
         minsize=1,
         maxsize=5,
+        ping=True,
     )
     await create_tables()
 
@@ -68,6 +82,7 @@ async def close_db():
         pool.close()
         await pool.wait_closed()
 
+@retry_on_operational_error
 async def add_message(chat_id: int, role: str, content: str):
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -76,6 +91,7 @@ async def add_message(chat_id: int, role: str, content: str):
                 (chat_id, role, content)
             )
 
+@retry_on_operational_error
 async def get_conversation_history(chat_id: int, limit: int = None) -> List[Dict[str, Any]]:
     if limit is None:
         limit = config.MAX_HISTORY * 2
@@ -90,6 +106,7 @@ async def get_conversation_history(chat_id: int, limit: int = None) -> List[Dict
             rows = await cur.fetchall()
             return list(reversed(rows))
 
+@retry_on_operational_error
 async def clear_conversation(chat_id: int):
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -98,6 +115,7 @@ async def clear_conversation(chat_id: int):
                 (chat_id,)
             )
 
+@retry_on_operational_error
 async def add_reminder(chat_id: int, message: str, remind_at: datetime) -> int:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -107,6 +125,7 @@ async def add_reminder(chat_id: int, message: str, remind_at: datetime) -> int:
             )
             return cur.lastrowid
 
+@retry_on_operational_error
 async def get_pending_reminders() -> List[Dict[str, Any]]:
     async with pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -115,11 +134,13 @@ async def get_pending_reminders() -> List[Dict[str, Any]]:
             )
             return await cur.fetchall()
 
+@retry_on_operational_error
 async def delete_reminder(reminder_id: int):
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM reminders WHERE id = %s", (reminder_id,))
 
+@retry_on_operational_error
 async def get_all_reminders(chat_id: int) -> List[Dict[str, Any]]:
     async with pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -129,10 +150,22 @@ async def get_all_reminders(chat_id: int) -> List[Dict[str, Any]]:
             )
             return await cur.fetchall()
 
+@retry_on_operational_error
 async def log_command(chat_id: int, command: str, output: str):
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "INSERT INTO command_logs (chat_id, command, output) VALUES (%s, %s, %s)",
                 (chat_id, command, output)
+            )
+    await cleanup_old_logs(chat_id)
+
+@retry_on_operational_error
+async def cleanup_old_logs(chat_id: int, days: int = 30):
+    cutoff = datetime.now() - timedelta(days=days)
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM command_logs WHERE chat_id = %s AND created_at < %s",
+                (chat_id, cutoff)
             )
