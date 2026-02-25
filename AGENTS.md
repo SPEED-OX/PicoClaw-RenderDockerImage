@@ -18,10 +18,15 @@ This is a personal productivity agent.
 ## Goal
 
 Build a Telegram-based personal assistant that can:
-1. **Answer questions** — using LLM via OpenRouter API
+1. **Answer questions** — using LLM via configurable providers (OpenRouter, Groq, Google, DeepSeek)
 2. **Run tasks** — execute shell commands, scripts, or predefined automations
 3. **Reminders & scheduling** — set reminders, notify user at the right time
 4. **Search the web** — fetch and summarize web results for the user
+5. **Browse URLs** — fetch and summarize any webpage
+6. **Manage notes** — save, list, delete notes per chat
+7. **Shortcuts** — create custom command shortcuts
+8. **Email** — send emails and check inbox (via SMTP/IMAP)
+9. **GitHub** — list repos, issues, commits via GitHub API
 
 ---
 
@@ -31,14 +36,44 @@ Build a Telegram-based personal assistant that can:
 |---|---|
 | Bot interface | Telegram Bot API (python-telegram-bot v20+) |
 | Webhook server | aiohttp |
-| LLM brain | OpenRouter API (model configurable via env) |
-| Web search | DuckDuckGo Search (free, no API key needed) — `duckduckgo-search` lib |
+| LLM brain | Multi-provider (OpenRouter, Groq, Google, DeepSeek) via config.json |
+| Web search | DuckDuckGo Search — `duckduckgo-search` lib |
+| URL browsing | httpx + BeautifulSoup |
 | Scheduler | APScheduler (for reminders) |
 | Database | MySQL (cPanel hosting) via aiomysql |
 | Backend | Python 3.11 |
 | Container | Docker |
 | Hosting | Render.com (free tier, Web Service) |
-| Config | Environment variables |
+| Config | config.json + Environment variables |
+
+---
+
+## Provider System
+
+PicoClaw supports multiple LLM providers via config.json:
+
+- **OpenRouter** — free models available
+- **Groq** — fast inference
+- **Google** — Gemini models
+- **DeepSeek** — reasoning models
+
+Each provider has an API key loaded from env vars, resolved at runtime via `${ENV_VAR_NAME}` placeholders in config.json.
+
+---
+
+## Agent Router
+
+Hybrid routing system:
+1. **Keyword matching** — predefined keywords map to agents (reason, search, creative)
+2. **LLM classifier** — if no keyword match, uses LLM to classify message into an agent
+
+Agents:
+- `default` — general conversation
+- `reason` — analytical questions
+- `search` — web search tasks
+- `creative` — writing tasks
+
+Each agent has a primary provider/model and a fallback for reliability.
 
 ---
 
@@ -47,54 +82,39 @@ Build a Telegram-based personal assistant that can:
 ```
 picoclaw/
 ├── AGENTS.md                  ← You are here
+├── config.json                ← Providers, agents, routing, bot settings
 ├── Dockerfile                 ← Container definition
 ├── requirements.txt           ← All dependencies
 ├── .env.example               ← Env vars template (no secrets)
 ├── render.yaml                ← Render one-click deploy config
 └── src/
-    ├── main.py                ← Entry point: starts aiohttp webhook server
-    ├── bot.py                 ← Telegram handlers, command routing
-    ├── config.py              ← Loads and validates all env vars
-    ├── db.py                  ← MySQL database (aiomysql), conversation history, reminders, logs
-    ├── llm.py                 ← OpenRouter API calls, conversation context
-    ├── search.py              ← DuckDuckGo web search + summarization
-    ├── scheduler.py           ← APScheduler reminders logic (loads from DB on startup)
-    └── tasks.py               ← Task/command execution logic
+    ├── main.py               ← Entry point: aiohttp webhook server
+    ├── bot.py                ← Telegram handlers, all command routing
+    ├── config.py             ← Loads config.json + env vars
+    ├── db.py                 ← MySQL: history, reminders, notes, shortcuts, sessions
+    ├── providers.py          ← Multi-provider abstraction layer
+    ├── agent_router.py       ← Task routing + agent execution
+    ├── llm.py               ← Wrapper for agent_router
+    ├── search.py            ← DuckDuckGo web search
+    ├── browser.py           ← URL fetching + summarization
+    ├── notes.py             ← Notes management
+    ├── shortcuts.py         ← Command shortcuts expansion
+    ├── scheduler.py         ← APScheduler reminders (loads from DB on startup)
+    ├── tasks.py             ← Whitelisted shell command execution
+    ├── email_handler.py     ← SMTP send + IMAP inbox
+    └── github_handler.py    ← GitHub REST API operations
 ```
 
 ---
 
-## Core Features
+## Database Schema (MySQL)
 
-### 1. LLM Brain (llm.py)
-- Calls OpenRouter API (`https://openrouter.ai/api/v1/chat/completions`)
-- Model is set via `OPENROUTER_MODEL` env var (default: `mistralai/mistral-7b-instruct:free`)
-- Maintains per-chat conversation history stored in MySQL (MAX_HISTORY message pairs per chat)
-- System prompt defines PicoClaw's personality and capabilities
-- Used as fallback for any message that isn't a specific command
-
-### 2. Web Search (search.py)
-- Uses `duckduckgo-search` Python lib (free, no key needed)
-- Triggered by `/search <query>` or when LLM decides search is needed
-- Returns top 3 results, summarized by LLM before sending to user
-
-### 3. Reminders (scheduler.py)
-- Uses APScheduler with AsyncIOScheduler
-- `/remind <time> <message>` — e.g. `/remind 10m Call mom`
-- Supports: `30s`, `10m`, `2h`, `tomorrow 9am`
-- Sends Telegram message to user when reminder fires
-- Reminders stored in MySQL, loaded on startup (persistent until fired or cancelled)
-
-### 4. Task Execution (tasks.py)
-- `/run <command>` — executes shell command inside container
-- Output returned to user via Telegram (truncated if too long)
-- Restricted to a whitelist of safe commands defined in config
-- Agent must implement a `ALLOWED_COMMANDS` list for security
-
-### 5. Conversation (bot.py)
-- Any plain message (no command prefix) goes to LLM brain
-- LLM has full context of recent conversation
-- PicoClaw's personality: helpful, concise, direct, no unnecessary fluff
+- **conversation_history** — per-chat message history (MAX_HISTORY pairs per chat)
+- **reminders** — persistent reminders (persistent until fired or cancelled)
+- **command_logs** — whitelisted command logs (30-day rolling retention per chat_id)
+- **sessions** — per-chat model/agent overrides, message counts
+- **notes** — per-chat notes with tags
+- **shortcuts** — per-chat command shortcuts (trigger → expansion)
 
 ---
 
@@ -102,16 +122,33 @@ picoclaw/
 
 | Command | Action |
 |---|---|
-| `/start` | Intro message, list capabilities |
+| `/start` | Intro message |
 | `/help` | Show all commands |
 | `/search <query>` | Web search + summarize |
+| `/browse <url>` | Fetch and summarize URL |
 | `/remind <time> <msg>` | Set a reminder |
 | `/reminders` | List active reminders |
 | `/cancelreminder <id>` | Cancel a reminder |
-| `/run <command>` | Execute whitelisted shell command |
-| `/clear` | Clear conversation history for this chat |
-| `/model` | Show current LLM model in use |
-| `/status` | Show bot uptime, reminders count, memory usage |
+| `/note <text>` | Save a note |
+| `/notes` | List all notes |
+| `/deletenote <id>` | Delete a note |
+| `/run <command>` | Execute whitelisted command |
+| `/model` | View current model |
+| `/model <provider/model>` | Override model for session |
+| `/model reset` | Clear model override |
+| `/model list` | List available models |
+| `/agent <name>` | Force specific agent |
+| `/agent reset` | Back to auto routing |
+| `/shortcut add <trigger> <expansion>` | Create shortcut |
+| `/shortcut list` | List shortcuts |
+| `/shortcut remove <trigger>` | Delete shortcut |
+| `/config` | View bot configuration |
+| `/session` | View session state |
+| `/clear` | Clear conversation history |
+| `/status` | Bot uptime, stats |
+| `/email <to> <subject> <body>` | Send email |
+| `/inbox` | Check unread emails |
+| `/gh` | GitHub operations |
 
 Any message without a `/` prefix is treated as a chat message to the LLM.
 
@@ -119,14 +156,14 @@ Any message without a `/` prefix is treated as a chat message to the LLM.
 
 ## Webhook Architecture
 
-- Render Web Service receives Telegram updates via webhook
-- `POST /webhook` → routes to bot.py handler
-- `GET /health` → returns 200 OK (required by Render)
-- On startup, `main.py` auto-registers webhook URL with Telegram
+```
+User → Telegram → POST /webhook → bot.py → agent_router → providers → reply
+```
 
-```
-User → Telegram → POST /webhook → bot.py → llm.py / search.py / scheduler.py → reply
-```
+- `POST /webhook` — receives Telegram updates
+- `GET /health` — returns 200 OK (required by Render)
+- On startup, `main.py` auto-registers webhook URL with Telegram
+- On startup, `main.py` registers all commands with Telegram (inline suggestions)
 
 ---
 
@@ -138,8 +175,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
+COPY config.json ./
+ENV PYTHONPATH=/app
 EXPOSE 8080
-CMD ["python", "src/main.py"]
+CMD ["python", "-m", "src.main"]
 ```
 
 ---
@@ -147,31 +186,9 @@ CMD ["python", "src/main.py"]
 ## Render Deployment
 
 - Service type: **Web Service**
-- Runtime: Docker
+- Runtime: **Docker**
 - Free tier
 - Deploy on push to `main` branch
-- `render.yaml` must be present for one-click deploy
-
-```yaml
-services:
-  - type: web
-    name: picoclaw
-    runtime: docker
-    plan: free
-    envVars:
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: RENDER_APP_URL
-        sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
-      - key: OPENROUTER_MODEL
-        value: mistralai/mistral-7b-instruct:free
-      - key: PORT
-        value: "8080"
-      - key: ALLOWED_CHAT_IDS
-        sync: false
-```
 
 ---
 
@@ -181,17 +198,62 @@ services:
 TELEGRAM_BOT_TOKEN=        # From @BotFather
 RENDER_APP_URL=            # e.g. https://picoclaw.onrender.com (no trailing slash)
 PORT=8080                  # Render injects this, keep as fallback
-OPENROUTER_API_KEY=        # From openrouter.ai (free account)
-OPENROUTER_MODEL=mistralai/mistral-7b-instruct:free  # Swap anytime
 ALLOWED_CHAT_IDS=          # Your Telegram chat ID (owner only access)
-MAX_HISTORY=20             # Max messages kept in conversation context
+MAX_HISTORY=20             # Max message pairs per chat
 
-# MySQL Database (cPanel hosting)
-MYSQL_HOST=                # Database host
-MYSQL_PORT=3306            # Database port
-MYSQL_USER=                # Database username
-MYSQL_PASSWORD=            # Database password
-MYSQL_DB=                  # Database name
+# MySQL Database (cPanel)
+MYSQL_HOST=
+MYSQL_PORT=3306
+MYSQL_USER=
+MYSQL_PASSWORD=
+MYSQL_DB=
+
+# Provider API Keys (see config.json)
+OPENROUTER_API_KEY=
+GROQ_API_KEY=
+GOOGLE_API_KEY=
+DEEPSEEK_API_KEY=
+
+# Email (optional)
+EMAIL_ADDRESS=
+EMAIL_PASSWORD=
+SMTP_SERVER=
+SMTP_PORT=587
+IMAP_SERVER=
+
+# GitHub (optional)
+GITHUB_TOKEN=
+GITHUB_USERNAME=
+```
+
+---
+
+## config.json Structure
+
+```json
+{
+  "providers": {
+    "openrouter": { "api_key": "${OPENROUTER_API_KEY}", "base_url": "...", "models": [...] },
+    "groq": { "api_key": "${GROQ_API_KEY}", "base_url": "...", "models": [...] },
+    ...
+  },
+  "agents": {
+    "default": { "provider": "openrouter", "model": "...", "fallback": "..." },
+    "reason": { "provider": "deepseek", "model": "...", "fallback": "..." },
+    ...
+  },
+  "routing": {
+    "keywords": { "reason": [...], "search": [...], "creative": [...] },
+    "llm_classifier": true,
+    "classifier_model": "..."
+  },
+  "bot": {
+    "name": "PicoClaw",
+    "personality": "...",
+    "max_history": 20,
+    "commands": [...]
+  }
+}
 ```
 
 ---
@@ -202,75 +264,63 @@ MYSQL_DB=                  # Database name
 - Every handler must check chat ID before processing
 - `/run` command uses `ALLOWED_COMMANDS` whitelist, never open shell
 - No secrets ever hardcoded or logged
+- API keys stored in environment, resolved via `${ENV_VAR}` placeholders in config.json
 
 ---
 
 ## Agent Rules & Constraints
 
 1. **No game logic, no simulation** — this is a real assistant
-2. **No paid services** — OpenRouter free models, DuckDuckGo free search
-3. **Webhook only** — no polling
-4. **Single container** — one Dockerfile, one Render service
-5. **Python only** — no Node, no Go
-6. **Secrets via env only** — never hardcode or log tokens
-7. **PORT from env** — always `os.getenv("PORT", 8080)`
-8. **Health check required** — `GET /health` must return 200
-9. **Owner-only access** — always validate `ALLOWED_CHAT_IDS`
-10. **Graceful errors** — all exceptions caught, user gets a friendly error message
+2. **Webhook only** — no polling
+3. **Single container** — one Dockerfile, one Render service
+4. **Python only** — no Node, no Go
+5. **Secrets via env only** — never hardcode or log tokens
+6. **PORT from env** — always `os.getenv("PORT", 8080)`
+7. **Health check required** — `GET /health` must return 200
+8. **Owner-only access** — always validate `ALLOWED_CHAT_IDS`
+9. **Graceful errors** — all exceptions caught, user gets friendly error message
 
 ---
 
-## What the Agent Should Build (In Order)
+## What Works On Render Free Tier
 
-1. `src/config.py` — env var loader + validator
-2. `src/db.py` — MySQL database (aiomysql), conversation history, reminders, logs
-3. `src/llm.py` — OpenRouter API client + conversation history
-4. `src/search.py` — DuckDuckGo search + LLM summarization
-5. `src/scheduler.py` — APScheduler reminders (loads from DB on startup)
-6. `src/tasks.py` — whitelisted command execution
-7. `src/bot.py` — all Telegram handlers wired together
-8. `src/main.py` — aiohttp server, webhook registration, startup
-9. `requirements.txt` — all dependencies pinned
-10. `Dockerfile` — lean Python 3.11 container
-11. `render.yaml` — Render Web Service config
-12. `.env.example` — all vars with comments
+- Telegram bot with webhook
+- Multi-provider LLM (OpenRouter, Groq, Google, DeepSeek)
+- Web search (DuckDuckGo)
+- URL browsing + summarization
+- Notes and shortcuts
+- Reminders (stored in MySQL, loaded on startup)
+- GitHub API operations
+- Command execution (whitelisted)
 
----
-
-## What the User Configures Later
-
-- [ ] `TELEGRAM_BOT_TOKEN` — from @BotFather
-- [ ] `OPENROUTER_API_KEY` — from openrouter.ai (free account)
-- [ ] `RENDER_APP_URL` — available after first Render deploy
-- [ ] `ALLOWED_CHAT_IDS` — your personal Telegram chat ID
-- [ ] `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB` — cPanel MySQL credentials
-- [ ] Swap `OPENROUTER_MODEL` to a better model per task (future)
-- [ ] More task automations in `tasks.py` (future scope)
+**Limited on Free Tier:**
+- No email sending (SMTP often blocked)
+- No custom tool installations
+- Sleeps after 15 min inactivity
 
 ---
 
-## Success Criteria
+## Future Scope (VPS Migration)
 
-The project is "done" when:
-- `docker build` succeeds
-- `GET /health` returns 200
-- Bot replies to a plain message via LLM
-- `/search hello world` returns summarized results
-- `/remind 1m test` fires after 1 minute
-- Only the owner's chat ID can use the bot
-- Deploys to Render free tier without modification
+When migrating to a VPS:
+1. Install system packages for additional tools
+2. Implement code execution agents (sandboxed)
+3. Add file management capabilities
+4. Implement more advanced agents
+5. Add voice input/output
+6. Implement custom plugin system
 
 ---
 
 ## Known Fixes & Decisions
 
-1. **db.py: MySQL reconnect resilience** — Added `ping=True` to create_pool() and a retry decorator that retries once on OperationalError to handle cPanel idle disconnects.
+1. **db.py: MySQL reconnect resilience** — Added retry decorator that retries once on OperationalError to handle cPanel idle disconnects.
 
 2. **search.py: DDGS instantiation** — Moved DDGS() instantiation inside search_web() function so a failure doesn't crash the bot on import.
 
 3. **scheduler.py: Async job execution** — Added `executor='asyncio'` to AsyncIOScheduler to ensure async reminder jobs fire reliably.
 
-4. **bot.py: Silent reject unauthorized users** — Removed reply to unauthorized chat IDs in check_access() - returns False silently without leaking that the bot exists.
+4. **bot.py: Silent reject unauthorized users** — Removed reply to unauthorized chat IDs - returns False silently without leaking that the bot exists.
 
 5. **llm.py: Empty choices guard** — Wrapped `data["choices"][0]["message"]["content"]` in try/except with fallback "No response from model." to prevent KeyError crashes.
 

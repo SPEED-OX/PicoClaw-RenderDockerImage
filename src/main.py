@@ -30,6 +30,16 @@ async def register_webhook(bot: Bot):
     except TelegramError as e:
         logger.error(f"Failed to set webhook: {e}")
 
+async def register_commands(bot: Bot):
+    from telegram import BotCommand
+    commands = config.BOT_SETTINGS.get("commands", [])
+    bot_commands = [BotCommand(cmd[0], cmd[1]) for cmd in commands]
+    try:
+        await bot.set_my_commands(bot_commands)
+        logger.info(f"Registered {len(bot_commands)} bot commands")
+    except TelegramError as e:
+        logger.error(f"Failed to register commands: {e}")
+
 async def on_startup(app):
     logger.info("Starting up...")
     
@@ -50,6 +60,7 @@ async def on_startup(app):
     await bot.initialize()
     
     await register_webhook(bot)
+    await register_commands(bot)
     
     await app["application"].start()
     #await bot.delete_webhook(drop_pending_updates=True)

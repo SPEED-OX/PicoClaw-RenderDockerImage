@@ -67,11 +67,49 @@ async def create_tables():
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     """
 
+    create_sessions_table = """
+    CREATE TABLE IF NOT EXISTS sessions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        chat_id BIGINT NOT NULL UNIQUE,
+        model_override VARCHAR(255),
+        agent_override VARCHAR(255),
+        message_count INT DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_chat_id (chat_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """
+
+    create_notes_table = """
+    CREATE TABLE IF NOT EXISTS notes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        chat_id BIGINT NOT NULL,
+        content TEXT NOT NULL,
+        tags VARCHAR(255),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_chat_id (chat_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """
+
+    create_shortcuts_table = """
+    CREATE TABLE IF NOT EXISTS shortcuts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        chat_id BIGINT NOT NULL,
+        trigger VARCHAR(255) NOT NULL,
+        expansion TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_chat_id (chat_id),
+        UNIQUE KEY unique_trigger (chat_id, trigger)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """
+
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(create_conversation_table)
             await cur.execute(create_reminders_table)
             await cur.execute(create_command_logs_table)
+            await cur.execute(create_sessions_table)
+            await cur.execute(create_notes_table)
+            await cur.execute(create_shortcuts_table)
 
 async def close_db():
     global pool
@@ -165,4 +203,128 @@ async def cleanup_old_logs(chat_id: int, days: int = 30):
             await cur.execute(
                 "DELETE FROM command_logs WHERE chat_id = %s AND created_at < %s",
                 (chat_id, cutoff)
+            )
+
+@retry_on_operational_error
+async def get_session(chat_id: int) -> Dict[str, Any]:
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                "SELECT model_override, agent_override, message_count FROM sessions WHERE chat_id = %s",
+                (chat_id,)
+            )
+            row = await cur.fetchone()
+            if row:
+                return dict(row)
+            await cur.execute(
+                "INSERT INTO sessions (chat_id) VALUES (%s)",
+                (chat_id,)
+            )
+            return {"model_override": None, "agent_override": None, "message_count": 0}
+
+@retry_on_operational_error
+async def update_session(chat_id: int, model_override: Optional[str] = None, agent_override: Optional[str] = None):
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            if model_override is not None:
+                await cur.execute(
+                    "INSERT INTO sessions (chat_id, model_override) VALUES (%s, %s) ON DUPLICATE KEY UPDATE model_override = %s",
+                    (chat_id, model_override, model_override)
+                )
+            if agent_override is not None:
+                await cur.execute(
+                    "INSERT INTO sessions (chat_id, agent_override) VALUES (%s, %s) ON DUPLICATE KEY UPDATE agent_override = %s",
+                    (chat_id, agent_override, agent_override)
+                )
+            await cur.execute(
+                "UPDATE sessions SET message_count = message_count + 1 WHERE chat_id = %s",
+                (chat_id,)
+            )
+
+@retry_on_operational_error
+async def reset_session(chat_id: int):
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE sessions SET model_override = NULL, agent_override = NULL, message_count = 0 WHERE chat_id = %s",
+                (chat_id,)
+            )
+
+@retry_on_operational_error
+async def add_note(chat_id: int, content: str, tags: Optional[str] = None) -> int:
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO notes (chat_id, content, tags) VALUES (%s, %s, %s)",
+                (chat_id, content, tags)
+            )
+            return cur.lastrowid
+
+@retry_on_operational_error
+async def get_notes(chat_id: int) -> List[Dict[str, Any]]:
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                "SELECT id, content, tags, created_at FROM notes WHERE chat_id = %s ORDER BY created_at DESC",
+                (chat_id,)
+            )
+            return await cur.fetchall()
+
+@retry_on_operational_error
+async def delete_note(note_id: int, chat_id: int):
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM notes WHERE id = %s AND chat_id = %s",
+                (note_id, chat_id)
+            )
+
+@retry_on_operational_error
+async def search_notes(chat_id: int, query: str) -> List[Dict[str, Any]]:
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                "SELECT id, content, tags, created_at FROM notes WHERE chat_id = %s AND (content LIKE %s OR tags LIKE %s) ORDER BY created_at DESC",
+                (chat_id, f"%{query}%", f"%{query}%")
+            )
+            return await cur.fetchall()
+
+@retry_on_operational_error
+async def add_shortcut(chat_id: int, trigger: str, expansion: str) -> int:
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO shortcuts (chat_id, trigger, expansion) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE expansion = %s",
+                (chat_id, trigger, expansion, expansion)
+            )
+            return cur.lastrowid
+
+@retry_on_operational_error
+async def get_shortcuts(chat_id: int) -> List[Dict[str, Any]]:
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                "SELECT id, trigger, expansion, created_at FROM shortcuts WHERE chat_id = %s ORDER BY created_at DESC",
+                (chat_id,)
+            )
+            return await cur.fetchall()
+
+@retry_on_operational_error
+async def get_shortcut(chat_id: int, trigger: str) -> Optional[Dict[str, Any]]:
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                "SELECT id, trigger, expansion FROM shortcuts WHERE chat_id = %s AND trigger = %s",
+                (chat_id, trigger)
+            )
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+@retry_on_operational_error
+async def delete_shortcut(chat_id: int, trigger: str):
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM shortcuts WHERE chat_id = %s AND trigger = %s",
+                (chat_id, trigger)
             )

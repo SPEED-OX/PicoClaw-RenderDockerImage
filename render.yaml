@@ -8,10 +8,6 @@ services:
         sync: false
       - key: RENDER_APP_URL
         sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
-      - key: OPENROUTER_MODEL
-        value: mistralai/mistral-7b-instruct:free
       - key: PORT
         value: "8080"
       - key: ALLOWED_CHAT_IDS
@@ -27,4 +23,26 @@ services:
       - key: MYSQL_PASSWORD
         sync: false
       - key: MYSQL_DB
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: EMAIL_ADDRESS
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: SMTP_SERVER
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: IMAP_SERVER
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_USERNAME
         sync: false
