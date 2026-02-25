@@ -94,11 +94,11 @@ async def create_tables():
     CREATE TABLE IF NOT EXISTS shortcuts (
         id INT AUTO_INCREMENT PRIMARY KEY,
         chat_id BIGINT NOT NULL,
-        trigger VARCHAR(255) NOT NULL,
+        `trigger` VARCHAR(255) NOT NULL,
         expansion TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_chat_id (chat_id),
-        UNIQUE KEY unique_trigger (chat_id, trigger)
+        UNIQUE KEY unique_trigger (chat_id, `trigger`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     """
 
@@ -294,7 +294,7 @@ async def add_shortcut(chat_id: int, trigger: str, expansion: str) -> int:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "INSERT INTO shortcuts (chat_id, trigger, expansion) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE expansion = %s",
+                "INSERT INTO shortcuts (chat_id, `trigger`, expansion) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE expansion = %s",
                 (chat_id, trigger, expansion, expansion)
             )
             return cur.lastrowid
@@ -304,7 +304,7 @@ async def get_shortcuts(chat_id: int) -> List[Dict[str, Any]]:
     async with pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(
-                "SELECT id, trigger, expansion, created_at FROM shortcuts WHERE chat_id = %s ORDER BY created_at DESC",
+                "SELECT id, `trigger`, expansion, created_at FROM shortcuts WHERE chat_id = %s ORDER BY created_at DESC",
                 (chat_id,)
             )
             return await cur.fetchall()
@@ -314,7 +314,7 @@ async def get_shortcut(chat_id: int, trigger: str) -> Optional[Dict[str, Any]]:
     async with pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(
-                "SELECT id, trigger, expansion FROM shortcuts WHERE chat_id = %s AND trigger = %s",
+                "SELECT id, `trigger`, expansion FROM shortcuts WHERE chat_id = %s AND `trigger` = %s",
                 (chat_id, trigger)
             )
             row = await cur.fetchone()
@@ -325,6 +325,6 @@ async def delete_shortcut(chat_id: int, trigger: str):
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "DELETE FROM shortcuts WHERE chat_id = %s AND trigger = %s",
+                "DELETE FROM shortcuts WHERE chat_id = %s AND `trigger` = %s",
                 (chat_id, trigger)
             )
