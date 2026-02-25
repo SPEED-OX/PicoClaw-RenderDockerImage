@@ -117,8 +117,11 @@ async def create_tables():
 async def close_db():
     global pool
     if pool:
-        pool.close()
-        await pool.wait_closed()
+        try:
+            pool.close()
+            await pool.wait_closed()
+        except Exception:
+            pass
 
 @retry_on_operational_error
 async def add_message(chat_id: int, role: str, content: str):

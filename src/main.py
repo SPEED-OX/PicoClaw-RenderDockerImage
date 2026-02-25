@@ -31,8 +31,7 @@ async def register_webhook(bot: Bot):
         logger.error(f"Failed to set webhook: {e}")
 
 async def register_commands(bot: Bot):
-    from telegram import BotCommand
-    from telegram.ext import BotCommandScopeDefault
+    from telegram import BotCommand, BotCommandScopeDefault
     raw_commands = config.BOT_SETTINGS.get("commands", [])
     logger.info(f"Raw commands from config: {raw_commands}")
     bot_commands = []
