@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: picoclaw
+    runtime: docker
+    plan: free
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: RENDER_APP_URL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: mistralai/mistral-7b-instruct:free
+      - key: PORT
+        value: "8080"
+      - key: ALLOWED_CHAT_IDS
+        sync: false
+      - key: MAX_HISTORY
+        value: "20"
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PORT
+        value: "3306"
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_DB
+        sync: false
