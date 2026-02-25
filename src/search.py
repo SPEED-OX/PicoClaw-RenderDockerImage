@@ -1,12 +1,12 @@
 import asyncio
-from duckduckgo_search import AsyncDDGS
+from duckduckgo_search import DDGS
 from src import llm
 
-ddgs = AsyncDDGS()
+ddgs = DDGS()
 
 async def search_web(query: str, max_results: int = 3) -> str:
     try:
-        results = await ddgs.atext(query, max_results=max_results)
+        results = await asyncio.to_thread(ddgs.text, query, max_results=max_results)
         
         if not results:
             return "No results found."
