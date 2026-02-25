@@ -6,17 +6,15 @@ from src import config
 
 pool: Optional[aiomysql.Pool] = None
 
-T = TypeVar('T')
-
-def retry_on_operational_error(func: Callable[..., T]) -> Callable[..., T]:
+def retry_on_operational_error(func):
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
         except aiomysql.OperationalError:
             try:
                 return await func(*args, **kwargs)
-            except aiomysql.OperationalError as e:
-                raise e
+            except aiomysql.OperationalError:
+                raise
     return wrapper
 
 async def init_db():
@@ -30,7 +28,6 @@ async def init_db():
         autocommit=True,
         minsize=1,
         maxsize=5,
-        ping=True,
     )
     await create_tables()
 
