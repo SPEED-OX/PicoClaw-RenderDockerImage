@@ -51,7 +51,7 @@ async def on_startup(app):
     await register_webhook(bot)
     
     await app["application"].start()
-    await bot.delete_webhook(drop_pending_updates=True)
+    #await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Bot started and webhook registered")
 
 async def on_shutdown(app):
