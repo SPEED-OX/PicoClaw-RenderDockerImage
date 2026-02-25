@@ -45,8 +45,9 @@ async def on_startup(app):
     app["application"] = bot_module.setup_bot()
     await app["application"].initialize()
     
-    bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+    bot = app["application"].bot
     app["bot"] = bot
+    await bot.initialize()
     
     await register_webhook(bot)
     
