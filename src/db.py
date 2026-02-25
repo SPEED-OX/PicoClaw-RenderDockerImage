@@ -12,6 +12,9 @@ def retry_on_operational_error(func):
             return await func(*args, **kwargs)
         except aiomysql.OperationalError:
             try:
+                if pool:
+                    async with pool.acquire() as conn:
+                        await conn.ping(reconnect=True)
                 return await func(*args, **kwargs)
             except aiomysql.OperationalError:
                 raise
@@ -28,7 +31,6 @@ async def init_db():
         autocommit=True,
         minsize=1,
         maxsize=5,
-        ping=True,
     )
     await create_tables()
 

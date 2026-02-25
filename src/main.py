@@ -33,17 +33,22 @@ async def register_webhook(bot: Bot):
 async def register_commands(bot: Bot):
     from telegram import BotCommand
     from telegram.ext import BotCommandScopeDefault
-    commands = config.BOT_SETTINGS.get("commands", [])
+    raw_commands = config.BOT_SETTINGS.get("commands", [])
+    logger.info(f"Raw commands from config: {raw_commands}")
     bot_commands = []
-    for cmd in commands:
-        command = cmd[0].strip().lstrip("/").lower()[:32]
-        description = cmd[1][:255] if len(cmd) > 1 else ""
-        bot_commands.append(BotCommand(command=command, description=description))
-    try:
-        await bot.set_my_commands(bot_commands, scope=BotCommandScopeDefault())
-        logger.info(f"Registered {len(bot_commands)} bot commands")
-    except TelegramError as e:
-        logger.error(f"Failed to register commands: {e}")
+    for cmd in raw_commands:
+        if isinstance(cmd, list) and len(cmd) >= 2:
+            command = str(cmd[0]).strip().lstrip("/").lower()[:32]
+            description = str(cmd[1])[:255]
+            bot_commands.append(BotCommand(command=command, description=description))
+    if bot_commands:
+        try:
+            await bot.set_my_commands(bot_commands, scope=BotCommandScopeDefault())
+            logger.info(f"Registered {len(bot_commands)} bot commands")
+        except TelegramError as e:
+            logger.error(f"Failed to register commands: {e}")
+    else:
+        logger.warning("No bot commands to register")
 
 async def on_startup(app):
     logger.info("Starting up...")
