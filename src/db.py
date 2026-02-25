@@ -28,6 +28,7 @@ async def init_db():
         autocommit=True,
         minsize=1,
         maxsize=5,
+        ping=True,
     )
     await create_tables()
 

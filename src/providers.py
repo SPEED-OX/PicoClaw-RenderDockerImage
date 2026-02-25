@@ -15,28 +15,27 @@ class ProviderManager:
             self.key_indices[provider_name] = 0
         return self.key_indices[provider_name]
 
-    def _rotate_key_index(self, provider_name: str):
-        self.key_indices[provider_name] = (self._get_provider_key_index(provider_name) + 1) % 10
+    def _rotate_key_index(self, provider_name: str, key_count: int):
+        if key_count > 1:
+            self.key_indices[provider_name] = (self._get_provider_key_index(provider_name) + 1) % key_count
 
-    def _resolve_api_key(self, api_key: str) -> str:
-        if isinstance(api_key, list):
-            idx = self._get_provider_key_index("temp")
-            if hasattr(self, '_temp_provider'):
-                provider_name = self._temp_provider
-                idx = self._get_provider_key_index(provider_name)
-                if idx < len(api_key):
-                    key = api_key[idx]
-                    self._rotate_key_index(provider_name)
-                    return key
+    def _get_api_key(self, provider_name: str, provider_config: Dict[str, Any]) -> str:
+        api_key = provider_config.get("api_key", "")
+        if isinstance(api_key, list) and len(api_key) > 1:
+            idx = self._get_provider_key_index(provider_name)
+            if idx < len(api_key):
+                key = api_key[idx]
+                self._rotate_key_index(provider_name, len(api_key))
+                return key
             return api_key[0] if api_key else ""
-        return api_key
+        return api_key if isinstance(api_key, str) else ""
 
     async def call_provider(self, provider_name: str, model: str, messages: List[Dict[str, str]]) -> str:
         provider = self.providers.get(provider_name)
         if not provider:
             raise ProviderError(f"Provider '{provider_name}' not found in config")
 
-        api_key = provider.get("api_key", "")
+        api_key = self._get_api_key(provider_name, provider)
         base_url = provider.get("base_url", "")
         
         if not api_key:

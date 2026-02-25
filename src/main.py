@@ -32,10 +32,15 @@ async def register_webhook(bot: Bot):
 
 async def register_commands(bot: Bot):
     from telegram import BotCommand
+    from telegram.ext import BotCommandScopeDefault
     commands = config.BOT_SETTINGS.get("commands", [])
-    bot_commands = [BotCommand(cmd[0], cmd[1]) for cmd in commands]
+    bot_commands = []
+    for cmd in commands:
+        command = cmd[0].strip().lstrip("/").lower()[:32]
+        description = cmd[1][:255] if len(cmd) > 1 else ""
+        bot_commands.append(BotCommand(command=command, description=description))
     try:
-        await bot.set_my_commands(bot_commands)
+        await bot.set_my_commands(bot_commands, scope=BotCommandScopeDefault())
         logger.info(f"Registered {len(bot_commands)} bot commands")
     except TelegramError as e:
         logger.error(f"Failed to register commands: {e}")
