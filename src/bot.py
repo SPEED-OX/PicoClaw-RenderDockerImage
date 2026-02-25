@@ -10,7 +10,7 @@ async def restricted_handler(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
         if not config.is_chat_allowed(chat_id):
-            await context.bot.send_message(chat_id=chat_id, text="Access denied.")
+            await context.bot.send_message(chat_id=chat_id, text="This is a personal bot, not authorized.")
             return
         try:
             await func(update, context)
