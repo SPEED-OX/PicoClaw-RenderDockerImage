@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">🤖 PicoClaw</h1>
+  <h1 align="center">🦀 PicoClaw</h1>
   <p align="center">A personal AI assistant controlled entirely via Telegram</p>
 </p>
 
