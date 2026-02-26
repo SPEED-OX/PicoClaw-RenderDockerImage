@@ -60,7 +60,9 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
         return truncate_response(results)
 
     elif action == "specialist":
-        response = await call_specialist(chat_id, message, specialist)
+        if not specialist:
+            specialist = "default"
+        response = await call_specialist(chat_id, message, str(specialist))
         return truncate_response(response)
 
     elif action == "multi_step":
@@ -68,19 +70,27 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
             return truncate_response("Multi-step requires both search_query and specialist.")
         
         search_results = await search.search_web(search_query)
-        response = await call_specialist_with_context(chat_id, message, specialist, search_results)
+        if not specialist:
+            specialist = "default"
+        response = await call_specialist_with_context(chat_id, message, str(specialist), search_results)
         return truncate_response(response)
 
     elif action == "transcribe":
         if not media or media.get("type") != "voice":
             return "No voice file provided."
-        response = await transcribe_audio(media.get("file"))
+        file_data = media.get("file")
+        if not file_data or not isinstance(file_data, bytes):
+            return "No valid voice file provided."
+        response = await transcribe_audio(file_data)
         return truncate_response(response)
 
     elif action == "vision":
         if not media or media.get("type") != "image":
             return "No image provided."
-        response = await analyze_image(media.get("file"), message)
+        file_data = media.get("file")
+        if not file_data or not isinstance(file_data, bytes):
+            return "No valid image file provided."
+        response = await analyze_image(file_data, message)
         return truncate_response(response)
 
     elif action == "embeddings_search":
@@ -234,7 +244,9 @@ Search results:
     except Exception as e:
         return f"Error: {str(e)}"
 
-async def transcribe_audio(audio_bytes: bytes) -> str:
+async def transcribe_audio(audio_bytes: Optional[bytes]) -> str:
+    if not audio_bytes:
+        return "No audio data provided."
     try:
         messages = [
             {"role": "system", "content": "You transcribe audio to text. Return only the transcription."},
@@ -245,7 +257,9 @@ async def transcribe_audio(audio_bytes: bytes) -> str:
     except Exception as e:
         return f"Transcription error: {str(e)}"
 
-async def analyze_image(image_bytes: bytes, prompt: str) -> str:
+async def analyze_image(image_bytes: Optional[bytes], prompt: str) -> str:
+    if not image_bytes:
+        return "No image data provided."
     try:
         messages = [
             {"role": "system", "content": "You analyze images and describe them. Be detailed but concise."},
