@@ -330,4 +330,232 @@ When migrating to a VPS:
 
 ---
 
+## Development Commands
+
+### Setup & Installation
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy environment template
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+### Running the Bot Locally
+
+```bash
+# Set required env vars first, then run:
+python -m src.main
+
+# Or with Docker:
+docker build -t picoclaw .
+docker run -p 8080:8080 --env-file .env picoclaw
+```
+
+### Testing & Linting
+
+**Currently, this project has no formal test suite or linting configuration.**
+
+If you add tests, use this workflow:
+
+```bash
+# Install test dependencies (example)
+pip install pytest pytest-asyncio aiohttp-test-utils
+
+# Run all tests
+pytest
+
+# Run a single test file
+pytest tests/test_bot.py
+
+# Run a single test function
+pytest tests/test_bot.py::test_start_command
+
+# Run with verbose output
+pytest -v
+
+# Run tests matching a pattern
+pytest -k "test_search"
+
+# Check code formatting
+pip install black
+black --check src/
+
+# Check linting
+pip install ruff
+ruff check src/
+
+# Run both
+black src/ && ruff check src/
+```
+
+---
+
+## Code Style Guidelines
+
+This project follows Python best practices with some specific conventions.
+
+### General Principles
+
+- **Async-first**: Use `async`/`await` for all I/O operations (database, HTTP, Telegram API)
+- **Type hints**: Always use type hints for function parameters and return types
+- **Error handling**: Catch exceptions gracefully, never leak stack traces to users
+- **No secrets**: Never hardcode secrets; use environment variables via `config.py`
+
+### Imports
+
+```python
+# Standard library first, then third-party, then local
+import os
+import json
+from datetime import datetime
+from typing import List, Dict, Optional, Any
+
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes
+
+from src import config, db, llm
+```
+
+- Use explicit relative imports within the `src` package: `from src import config`
+- Group imports by type (stdlib, third-party, local) with blank lines between
+- Sort imports alphabetically within each group
+
+### Naming Conventions
+
+| Element | Convention | Example |
+|---------|------------|---------|
+| Functions/variables | snake_case | `def get_user(id):`, `max_history = 20` |
+| Classes | PascalCase | `class MyHandler:` |
+| Constants | UPPER_SNAKE | `MAX_HISTORY = 20` |
+| Async functions | prefix with `async_` if ambiguous | `async def fetch_data()` |
+
+### Type Hints
+
+Always use type hints. Import from `typing` for complex types:
+
+```python
+from typing import List, Dict, Optional, Any, Callable
+
+def process_items(items: List[str]) -> Dict[str, int]:
+    return {item: len(item) for item in items}
+
+async def get_user(user_id: int) -> Optional[Dict[str, Any]]:
+    ...
+```
+
+### Async/Await
+
+```python
+# Correct: async function
+async def fetch_data(url: str) -> str:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            return await response.text()
+
+# Correct: calling async from sync context requires event loop
+# In bot.py handlers, always await:
+async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    result = await search.search_web(query)  # await the call
+```
+
+### Error Handling
+
+```python
+# Always wrap external calls in try/except
+async def safe_operation():
+    try:
+        result = await risky_call()
+        return result
+    except SpecificException as e:
+        logger.warning(f"Operation failed: {e}")
+        return fallback_value
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return "An error occurred. Please try again."
+
+# Never expose raw exceptions to users
+try:
+    await bot.send_message(chat_id=chat_id, text=message)
+except Exception as e:
+    await bot.send_message(chat_id=chat_id, text="Failed to send message.")
+```
+
+### Database Operations
+
+```python
+# Always use the retry decorator for DB operations
+from src.db import retry_on_operational_error
+
+@retry_on_operational_error
+async def get_user(user_id: int):
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+            return await cur.fetchone()
+
+# Always use parameterized queries, never string formatting
+# Wrong: cur.execute(f"SELECT * FROM users WHERE id = {user_id}")
+# Correct: cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+```
+
+### Telegram Bot Handlers
+
+```python
+# Always check access first
+async def my_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not check_access(update, context):
+        return  # Silently reject unauthorized users
+    
+    # Then process command
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="...")
+```
+
+### Configuration
+
+- All configuration goes in `config.json` and `config.py`
+- Secrets come from environment variables
+- Use `${ENV_VAR_NAME}` syntax in `config.json` for env var resolution
+
+### Logging
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Use appropriate log levels
+logger.debug("Detailed debug info")
+logger.info("Normal operation")
+logger.warning("Something unexpected but handled")
+logger.error("Something failed")
+```
+
+---
+
+## Adding New Features
+
+1. **New command**: Add handler in `bot.py`, register in `main.py`
+2. **New provider**: Add config in `config.json`, implement in `providers.py`
+3. **New agent**: Add config in `config.json`, implement logic in `agent_router.py`
+4. **Database table**: Add schema in `db.py::create_tables()`, add CRUD in `db.py`
+
+---
+
+## Debugging Tips
+
+- Set `TELEGRAM_BOT_TOKEN` to test locally without deploying
+- Use `python -m src.main` with DEBUG logging to see requests
+- Check Render logs for production issues: `render logs -f <service>`
+- Test webhook locally with ngrok: `ngrok http 8080`
+
+---
+
 *Last updated: Feb 2026 | Maintained by: Project Owner*

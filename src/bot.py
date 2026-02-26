@@ -1,9 +1,10 @@
 import time
 import json
+import asyncio
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler
-from src import config, llm, search, scheduler, tasks, db, shortcuts, browser, notes, email_handler, github_handler
+from src import config, llm, search, scheduler, tasks, db, shortcuts, browser, notes, email_handler, github_handler, orchestrator
 
 START_TIME = time.time()
 
@@ -67,7 +68,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not query:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /search <query>")
         return
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Searching...")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     result = await search.search_web(query)
     await context.bot.send_message(chat_id=update.effective_chat.id, text=result)
 
@@ -78,7 +79,7 @@ async def browse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not url:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /browse <url>")
         return
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Fetching...")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     result = await browser.browse_url(url)
     await context.bot.send_message(chat_id=update.effective_chat.id, text=result)
 
@@ -392,8 +393,59 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if expanded:
         text = expanded
     
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     response = await llm.call_llm(update.effective_chat.id, text)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+    
+    if isinstance(response, list):
+        for part in response:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=part)
+    else:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+
+async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not check_access(update, context):
+        return
+    chat_id = update.effective_chat.id
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    
+    try:
+        voice = update.message.voice
+        file = await context.bot.get_file(voice.file_id)
+        audio_bytes = await asyncio.to_thread(file.download_as_bytearray)
+        audio_data = bytes(audio_bytes)
+        
+        response = await orchestrator.execute(chat_id, "[voice message]", media={"type": "voice", "file": audio_data})
+        
+        if isinstance(response, list):
+            for part in response:
+                await context.bot.send_message(chat_id=chat_id, text=part)
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=response)
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"Voice processing error: {str(e)}")
+
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not check_access(update, context):
+        return
+    chat_id = update.effective_chat.id
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    
+    try:
+        photo = update.message.photo[-1]
+        file = await context.bot.get_file(photo.file_id)
+        image_bytes = await asyncio.to_thread(file.download_as_bytearray)
+        image_data = bytes(image_bytes)
+        
+        caption = update.message.caption or "Describe this image"
+        response = await orchestrator.execute(chat_id, caption, media={"type": "image", "file": image_data})
+        
+        if isinstance(response, list):
+            for part in response:
+                await context.bot.send_message(chat_id=chat_id, text=part)
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=response)
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"Photo processing error: {str(e)}")
 
 async def send_reminder_message(chat_id: int, message: str):
     from telegram import Bot
@@ -427,5 +479,7 @@ def setup_bot():
     app.add_handler(CommandHandler("inbox", inbox_command))
     app.add_handler(CommandHandler("gh", gh_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, voice_handler))
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     
     return app

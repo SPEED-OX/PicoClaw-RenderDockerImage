@@ -1,0 +1,173 @@
+import json
+from typing import Dict, Any, Optional, List
+from src import config, providers, db
+
+BRAIN_SYSTEM_PROMPT = """You are PicoClaw's brain — the central intelligence that decides how to handle every user message.
+
+## Your Identity
+You are a personal assistant named PicoClaw. Be sharp, concise, no fluff. You're capable, not chatty.
+
+## Available Tools
+- answer_directly: You know the answer confidently. Use this for facts, opinions, explanations you trust.
+- search_and_answer: Fetch web results, then synthesize a final answer. Use for current events, unfamiliar topics, or when you need verification.
+- search_only: Return raw summarized search results without synthesis. Use when user explicitly wants search results.
+- specialist: Hand off to a specialist agent:
+  - reason: For analytical, logical, comparative questions
+  - creative: For writing, brainstorming, creative tasks
+  - code: For code writing, debugging, refactoring
+- multi_step: First search, then pass results to a specialist. Both search_query and specialist must be set.
+- transcribe: Audio file needs transcription via Groq Whisper.
+- vision: Image needs analysis via Google Vision.
+- embeddings_search: Semantic search through user's notes.
+- code_fim: Code completion using DeepSeek FIM endpoint.
+
+## Decision Format
+You MUST respond with ONLY valid JSON, no other text:
+
+{
+  "action": "answer_directly | search_and_answer | search_only | specialist | multi_step | transcribe | vision | embeddings_search | code_fim",
+  "confidence": "high | medium | low",
+  "search_query": "string or null",
+  "fetch_full_page": false,
+  "specialist": "reason | creative | code | null",
+  "capability": "chat | transcribe | vision | embeddings | fim",
+  "reasoning": "one line explaining this decision",
+  "response": "direct answer string or null if tools needed"
+}
+
+## Telegram Formatting Rules
+- Plain text only
+- No markdown tables
+- No HTML
+- Maximum 4096 characters per message
+- Use line breaks for readability
+
+## Confidence Guidance
+- If unsure about a fact, set confidence to "low" — the orchestrator will verify with a quick web search
+- For current events, always use search regardless of confidence
+- If the user explicitly asks to search, use search_only
+
+## Examples
+- "What's the weather?" -> search_and_answer, confidence: medium
+- "Explain quantum physics" -> answer_directly (if you know), or specialist: reason
+- "Write me a poem" -> specialist: creative
+- "Fix this bug: [code]" -> specialist: code
+- "What's latest news?" -> search_and_answer, confidence: high
+
+Now analyze this message and respond with ONLY JSON."""
+
+async def get_conversation_context(chat_id: int) -> str:
+    history = await db.get_conversation_history(chat_id)
+    context_lines = []
+    for msg in history[-10:]:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")[:200]
+        context_lines.append(f"{role}: {content}")
+    return "\n".join(context_lines)
+
+async def decide(chat_id: int, message: str, media: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    brain_config = config.BOT_CONFIG.get("brain", {})
+    provider = brain_config.get("provider", "google")
+    model = brain_config.get("model", "gemini-1.5-flash")
+    fallback = brain_config.get("fallback", "groq/llama3-70b-8192")
+    temperature = brain_config.get("temperature", 0.3)
+    max_tokens = brain_config.get("max_tokens", 1024)
+
+    context = await get_conversation_context(chat_id)
+    
+    if media:
+        media_desc = f"\n\nMedia attached: {media.get('type', 'unknown')}"
+        if media.get("type") == "voice":
+            message = f"[Voice message]{media_desc}\n\nUser message: {message}"
+        elif media.get("type") == "image":
+            message = f"[Image]{media_desc}\n\nUser caption: {message}"
+    else:
+        media_desc = ""
+
+    prompt = f"""{BRAIN_SYSTEM_PROMPT}
+
+Recent conversation context:
+{context}
+
+User message: {message}
+"""
+
+    messages = [
+        {"role": "system", "content": "You are PicoClaw's brain. Always respond with valid JSON only."},
+        {"role": "user", "content": prompt}
+    ]
+
+    try:
+        if "/" in model:
+            provider_name, model_name = model.split("/", 1)
+        else:
+            provider_name = provider
+            model_name = model
+
+        response = await providers.call_with_fallback(
+            f"{provider_name}/{model_name}",
+            messages,
+            fallback
+        )
+
+        return parse_brain_response(response)
+
+    except Exception as e:
+        return {
+            "action": "answer_directly",
+            "confidence": "high",
+            "search_query": None,
+            "fetch_full_page": False,
+            "specialist": None,
+            "capability": "chat",
+            "reasoning": f"Brain error: {str(e)[:50]}, defaulting to direct answer",
+            "response": f"I encountered an issue processing your request. Please try again. Error: {str(e)[:100]}"
+        }
+
+def parse_brain_response(response: str) -> Dict[str, Any]:
+    default_decision = {
+        "action": "answer_directly",
+        "confidence": "high",
+        "search_query": None,
+        "fetch_full_page": False,
+        "specialist": None,
+        "capability": "chat",
+        "reasoning": "Failed to parse brain response, defaulting to direct answer",
+        "response": None
+    }
+
+    try:
+        response = response.strip()
+        if response.startswith("```json"):
+            response = response[7:]
+        if response.startswith("```"):
+            response = response[3:]
+        if response.endswith("```"):
+            response = response[:-3]
+        response = response.strip()
+
+        parsed = json.loads(response)
+        
+        required_fields = ["action", "confidence", "reasoning"]
+        for field in required_fields:
+            if field not in parsed:
+                parsed[field] = default_decision[field]
+
+        if "search_query" not in parsed:
+            parsed["search_query"] = None
+        if "fetch_full_page" not in parsed:
+            parsed["fetch_full_page"] = False
+        if "specialist" not in parsed:
+            parsed["specialist"] = None
+        if "capability" not in parsed:
+            parsed["capability"] = "chat"
+        if "response" not in parsed:
+            parsed["response"] = None
+
+        return parsed
+
+    except (json.JSONDecodeError, Exception) as e:
+        return {
+            **default_decision,
+            "reasoning": f"Parse error: {str(e)[:40]}, defaulting to direct answer"
+        }

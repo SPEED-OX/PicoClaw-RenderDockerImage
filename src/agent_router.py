@@ -1,3 +1,5 @@
+# DEPRECATED: Use orchestrator.py for new code. Kept for backward compatibility.
+
 import re
 from typing import List, Dict, Any, Optional
 from src import config, db, providers
