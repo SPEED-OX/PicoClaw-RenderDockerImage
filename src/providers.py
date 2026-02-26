@@ -113,7 +113,7 @@ class ProviderManager:
         self._check_free_enforcement(provider_name, model)
         
         endpoint_path = self._get_endpoint(provider_name, capability)
-        endpoint = f"{base_url}{endpoint_path}"
+        endpoint = f"{base_url.rstrip('/')}/{endpoint_path.lstrip('/')}"
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
