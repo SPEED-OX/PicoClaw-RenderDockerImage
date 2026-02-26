@@ -20,9 +20,8 @@
       "api_key": "${GOOGLE_API_KEY}",
       "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
       "models": [
-        {"id": "gemini-2.0-flash", "free": true},
-        {"id": "gemini-1.5-flash", "free": true},
-        {"id": "gemini-1.5-pro", "free": false}
+        {"id": "gemini-2.5-flash", "free": true},
+        {"id": "gemini-2.0-flash-lite", "free": true}
       ]
     },
     "deepseek": {
@@ -36,7 +35,7 @@
   },
   "brain": {
     "provider": "google",
-    "model": "gemini-2.0-flash",
+    "model": "gemini-2.5-flash",
     "fallback": "groq/llama3-70b-8192",
     "temperature": 0.3,
     "max_tokens": 1024
@@ -63,7 +62,7 @@
     },
     "creative": {
       "provider": "google",
-      "model": "gemini-2.0-flash",
+      "model": "gemini-2.5-flash",
       "fallback": "openrouter/mistralai/mistral-7b-instruct:free"
     },
     "code": {
