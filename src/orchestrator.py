@@ -6,7 +6,30 @@ logger = logging.getLogger(__name__)
 
 MAX_RESPONSE_CHARS = 4000
 
-async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = None) -> Union[str, List[str]]:
+STATUS_TEXTS = {
+    "answer_directly":   "💭 Thinking...",
+    "search_and_answer": "🔍 Searching...",
+    "search_only":       "🔍 Searching...",
+    "specialist":        {
+        "reason":   "🧠 Reasoning...",
+        "creative": "✍️ Writing...",
+        "code":     "💻 Coding...",
+    },
+    "multi_step":        "🔍 Searching then reasoning...",
+    "transcribe":        "🎙️ Transcribing...",
+    "vision":            "👁️ Analyzing image...",
+    "embeddings_search": "📝 Searching notes...",
+    "code_fim":          "💻 Coding...",
+}
+
+async def _update_status(bot, chat_id: int, message_id: int, text: str):
+    if bot and message_id:
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text)
+        except Exception:
+            pass
+
+async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = None, bot=None, status_message_id: Optional[int] = None) -> Union[str, List[str]]:
     decision = await brain.decide(chat_id, message, media)
     
     action = decision.get("action", "answer_directly")
@@ -19,6 +42,11 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
     direct_response = decision.get("response")
 
     logger.info(f"Orchestrator: action={action}, specialist={specialist}, confidence={confidence}")
+
+    status_text = STATUS_TEXTS.get(action, "💭 Thinking...")
+    if action == "specialist" and isinstance(status_text, dict):
+        status_text = status_text.get(str(specialist) if specialist else "default", "💭 Thinking...")
+    await _update_status(bot, chat_id, status_message_id, status_text)
 
     await db.log_command(chat_id, action, reasoning)
 
@@ -136,7 +164,7 @@ async def quick_verify(query: str) -> str:
 
 async def extract_top_url(query: str) -> str:
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         import asyncio
         ddgs = DDGS()
         results = await asyncio.to_thread(ddgs.text, query, max_results=1)

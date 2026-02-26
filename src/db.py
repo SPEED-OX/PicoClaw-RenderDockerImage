@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any, Callable, TypeVar
 from src import config
 
 pool: Optional[aiomysql.Pool] = None
+_UNSET = object()
 
 def retry_on_operational_error(func):
     async def wrapper(*args, **kwargs):
@@ -229,15 +230,15 @@ async def get_session(chat_id: int) -> Dict[str, Any]:
             return {"model_override": None, "agent_override": None, "message_count": 0}
 
 @retry_on_operational_error
-async def update_session(chat_id: int, model_override: Optional[str] = None, agent_override: Optional[str] = None):
+async def update_session(chat_id: int, model_override=_UNSET, agent_override=_UNSET):
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            if model_override is not None:
+            if model_override is not _UNSET:
                 await cur.execute(
                     "INSERT INTO sessions (chat_id, model_override) VALUES (%s, %s) ON DUPLICATE KEY UPDATE model_override = %s",
                     (chat_id, model_override, model_override)
                 )
-            if agent_override is not None:
+            if agent_override is not _UNSET:
                 await cur.execute(
                     "INSERT INTO sessions (chat_id, agent_override) VALUES (%s, %s) ON DUPLICATE KEY UPDATE agent_override = %s",
                     (chat_id, agent_override, agent_override)

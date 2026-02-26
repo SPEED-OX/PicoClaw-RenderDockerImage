@@ -389,6 +389,8 @@ async def gh_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update, context):
         return
+    if not update.message or not update.message.text:
+        return
     text = update.message.text
     
     if text.startswith("/"):
@@ -398,20 +400,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if expanded:
         text = expanded
     
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = await llm.call_llm(update.effective_chat.id, text)
-    
+    chat_id = update.effective_chat.id
+    status_msg = await context.bot.send_message(chat_id=chat_id, text="💭 Thinking...")
+
+    response = await orchestrator.execute(chat_id, text, bot=context.bot, status_message_id=status_msg.message_id)
+
     if isinstance(response, list):
+        await status_msg.delete()
         for part in response:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=part)
+            await context.bot.send_message(chat_id=chat_id, text=part)
     else:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=status_msg.message_id,
+                text=response
+            )
+        except Exception:
+            await context.bot.send_message(chat_id=chat_id, text=response)
 
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update, context):
         return
     chat_id = update.effective_chat.id
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    
+    status_msg = await context.bot.send_message(chat_id=chat_id, text="🎙️ Transcribing...")
     
     try:
         voice = update.message.voice
@@ -419,13 +432,17 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         audio_bytes = await file.download_as_bytearray()
         audio_data = bytes(audio_bytes)
         
-        response = await orchestrator.execute(chat_id, "[voice message]", media={"type": "voice", "file": audio_data})
+        response = await orchestrator.execute(chat_id, "[voice message]", media={"type": "voice", "file": audio_data}, bot=context.bot, status_message_id=status_msg.message_id)
         
         if isinstance(response, list):
+            await status_msg.delete()
             for part in response:
                 await context.bot.send_message(chat_id=chat_id, text=part)
         else:
-            await context.bot.send_message(chat_id=chat_id, text=response)
+            try:
+                await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response)
+            except Exception:
+                await context.bot.send_message(chat_id=chat_id, text=response)
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"Voice processing error: {str(e)}")
 
@@ -433,7 +450,8 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update, context):
         return
     chat_id = update.effective_chat.id
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    
+    status_msg = await context.bot.send_message(chat_id=chat_id, text="👁️ Analyzing image...")
     
     try:
         photo = update.message.photo[-1]
@@ -442,13 +460,17 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image_data = bytes(image_bytes)
         
         caption = update.message.caption or "Describe this image"
-        response = await orchestrator.execute(chat_id, caption, media={"type": "image", "file": image_data})
+        response = await orchestrator.execute(chat_id, caption, media={"type": "image", "file": image_data}, bot=context.bot, status_message_id=status_msg.message_id)
         
         if isinstance(response, list):
+            await status_msg.delete()
             for part in response:
                 await context.bot.send_message(chat_id=chat_id, text=part)
         else:
-            await context.bot.send_message(chat_id=chat_id, text=response)
+            try:
+                await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response)
+            except Exception:
+                await context.bot.send_message(chat_id=chat_id, text=response)
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"Photo processing error: {str(e)}")
 

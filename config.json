@@ -13,7 +13,8 @@
       "base_url": "https://api.groq.com/openai/v1",
       "models": [
         {"id": "llama3-70b-8192", "free": true},
-        {"id": "mixtral-8x7b-32768", "free": true}
+        {"id": "mixtral-8x7b-32768", "free": true},
+        {"id": "whisper-large-v3", "free": true}
       ]
     },
     "google": {
@@ -27,8 +28,8 @@
       "api_key": "${DEEPSEEK_API_KEY}",
       "base_url": "https://api.deepseek.com/v1",
       "models": [
-        {"id": "deepseek-chat", "free": false},
-        {"id": "deepseek-reasoner", "free": false}
+        {"id": "deepseek-chat", "free": true},
+        {"id": "deepseek-reasoner", "free": true}
       ]
     }
   },

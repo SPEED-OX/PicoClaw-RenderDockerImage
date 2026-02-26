@@ -4,22 +4,17 @@ from src import config
 
 PROVIDER_ENDPOINTS = {
     "groq": {
-        "chat": "/openai/v1/chat/completions",
-        "transcribe": "/openai/v1/audio/transcriptions",
-        "translate": "/openai/v1/audio/translations"
-    },
-    "google": {
-        "chat": "/v1beta/openai/chat/completions",
-        "embeddings": "/v1beta/openai/embeddings",
-        "vision": "/v1beta/openai/chat/completions"
+        "chat": "chat/completions",
+        "transcribe": "audio/transcriptions",
+        "translate": "audio/translations"
     },
     "openrouter": {
-        "chat": "/api/v1/chat/completions",
-        "embeddings": "/api/v1/embeddings"
+        "chat": "chat/completions",
+        "embeddings": "embeddings"
     },
     "deepseek": {
-        "chat": "/v1/chat/completions",
-        "fim": "/v1/fim/completions"
+        "chat": "chat/completions",
+        "fim": "fim/completions"
     }
 }
 
