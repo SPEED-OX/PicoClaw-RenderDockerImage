@@ -99,7 +99,97 @@ class ProviderManager:
         if not is_free and not model.endswith(":free"):
             raise ProviderError(f"Model {model} is not free")
 
+    def _get_agent_params(self, agent_name: str) -> Dict[str, Any]:
+        agent_config = config.get_agent_config(agent_name)
+        if not agent_config:
+            return {"temperature": 0.7, "max_tokens": 1024}
+        return {
+            "temperature": agent_config.get("temperature", 0.7),
+            "max_tokens": agent_config.get("max_tokens", 1024)
+        }
+
+    async def _call_google_native(self, model: str, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1024) -> str:
+        provider = self.providers.get("google")
+        if not provider:
+            raise ProviderError("Google provider not found in config")
+        
+        api_key = self._get_api_key("google", provider)
+        if not api_key:
+            raise ProviderError("No API key for Google")
+        
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        
+        system_instruction = None
+        contents = []
+        
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            
+            if role == "system":
+                system_instruction = content
+            elif role == "assistant":
+                contents.append({"role": "model", "parts": [{"text": content}]})
+            else:
+                contents.append({"role": "user", "parts": [{"text": content}]})
+        
+        request_body: Dict[str, Any] = {
+            "contents": contents
+        }
+        
+        if system_instruction:
+            request_body["systemInstruction"] = {
+                "role": "user",
+                "parts": [{"text": system_instruction}]
+            }
+        
+        request_body["generationConfig"] = {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    endpoint,
+                    headers={
+                        "x-goog-api-key": api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json=request_body,
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                try:
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        return "Response blocked by safety filter"
+                    
+                    first_candidate = candidates[0]
+                    content = first_candidate.get("content", {})
+                    parts = content.get("parts", [])
+                    
+                    if not parts:
+                        return "Response blocked by safety filter"
+                    
+                    return parts[0].get("text", "No response text")
+                    
+                except (KeyError, IndexError) as e:
+                    return f"Response blocked by safety filter"
+                    
+        except httpx.HTTPStatusError as e:
+            raise ProviderError(f"Google API error: {e.response.status_code}")
+        except Exception as e:
+            raise ProviderError(f"Google API call failed: {str(e)}")
+
     async def call_provider(self, provider_name: str, model: str, messages: List[Dict[str, str]], capability: str = "chat") -> str:
+        if provider_name == "google":
+            brain_config = config.BOT_CONFIG.get("brain", {})
+            temperature = brain_config.get("temperature", 0.3)
+            max_tokens = brain_config.get("max_tokens", 1024)
+            return await self._call_google_native(model, messages, temperature, max_tokens)
+        
         provider = self.providers.get(provider_name)
         if not provider:
             raise ProviderError(f"Provider '{provider_name}' not found in config")
