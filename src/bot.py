@@ -411,20 +411,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
         for part in response:
-            await context.bot.send_message(chat_id=chat_id, text=part)
+            await context.bot.send_message(chat_id=chat_id, text=part, parse_mode="Markdown")
     else:
         try:
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=status_msg.message_id,
-                text=response
+                text=response,
+                parse_mode="Markdown"
             )
         except Exception:
             try:
-                await status_msg.delete()
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=status_msg.message_id,
+                    text=response,
+                    parse_mode=None
+                )
             except Exception:
-                pass
-            await context.bot.send_message(chat_id=chat_id, text=response)
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+                await context.bot.send_message(chat_id=chat_id, text=response, parse_mode="Markdown")
 
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update, context):
@@ -447,16 +456,19 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
             for part in response:
-                await context.bot.send_message(chat_id=chat_id, text=part)
+                await context.bot.send_message(chat_id=chat_id, text=part, parse_mode="Markdown")
         else:
             try:
-                await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response)
+                await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response, parse_mode="Markdown")
             except Exception:
                 try:
-                    await status_msg.delete()
+                    await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response, parse_mode=None)
                 except Exception:
-                    pass
-                await context.bot.send_message(chat_id=chat_id, text=response)
+                    try:
+                        await status_msg.delete()
+                    except Exception:
+                        pass
+                    await context.bot.send_message(chat_id=chat_id, text=response, parse_mode="Markdown")
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"Voice processing error: {str(e)}")
 
@@ -482,16 +494,19 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
             for part in response:
-                await context.bot.send_message(chat_id=chat_id, text=part)
+                await context.bot.send_message(chat_id=chat_id, text=part, parse_mode="Markdown")
         else:
             try:
-                await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response)
+                await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response, parse_mode="Markdown")
             except Exception:
                 try:
-                    await status_msg.delete()
+                    await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response, parse_mode=None)
                 except Exception:
-                    pass
-                await context.bot.send_message(chat_id=chat_id, text=response)
+                    try:
+                        await status_msg.delete()
+                    except Exception:
+                        pass
+                    await context.bot.send_message(chat_id=chat_id, text=response, parse_mode="Markdown")
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"Photo processing error: {str(e)}")
 

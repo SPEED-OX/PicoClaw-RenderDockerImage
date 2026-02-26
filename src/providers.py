@@ -228,7 +228,8 @@ class ProviderManager:
         try:
             return await do_request()
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
+            status_code = e.response.status_code
+            if status_code == 429:
                 if status_callback:
                     try:
                         await status_callback("⏳ Retrying in 3s...")
@@ -241,15 +242,41 @@ class ProviderManager:
                     if retry_error.response.status_code == 429:
                         raise ProviderError(f"Provider API error after retry: {retry_error.response.status_code}")
                     raise
-            elif e.response.status_code == 400:
+            elif status_code == 402:
+                raise ProviderError(f"Provider {provider_name} requires payment (402)")
+            elif status_code == 400:
                 logger.warning(f"Provider {provider_name} returned 400: {e.response.text[:200]}")
-                raise ProviderError(f"Provider API error: {e.response.status_code}")
+                raise ProviderError(f"Provider API error: {status_code}")
             else:
-                raise ProviderError(f"Provider API error: {e.response.status_code}")
+                raise ProviderError(f"Provider API error: {status_code}")
         except ProviderError:
             raise
         except Exception as e:
             raise ProviderError(f"Provider call failed: {str(e)}")
+
+    async def transcribe_audio(self, audio_bytes: bytes, provider_name: str = "groq") -> str:
+        provider = self.providers.get(provider_name)
+        if not provider:
+            raise ProviderError(f"Provider '{provider_name}' not found")
+
+        api_key = self._get_api_key(provider_name, provider)
+        base_url = provider.get("base_url", "").rstrip("/")
+        endpoint = f"{base_url}/audio/transcriptions"
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    files={"file": ("audio.ogg", audio_bytes, "audio/ogg")},
+                    data={"model": "whisper-large-v3-turbo", "response_format": "text"}
+                )
+                response.raise_for_status()
+                return response.text.strip()
+        except httpx.HTTPStatusError as e:
+            raise ProviderError(f"Transcription error: {e.response.status_code}: {e.response.text[:100]}")
+        except Exception as e:
+            raise ProviderError(f"Transcription failed: {str(e)}")
 
     async def call_with_fallback(self, provider_model: str, messages: List[Dict[str, str]], fallback: Union[str, List[str], None] = None, capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
         if "/" in provider_model:
@@ -289,3 +316,6 @@ async def call_provider(provider_name: str, model: str, messages: List[Dict[str,
 
 async def call_with_fallback(provider_model: str, messages: List[Dict[str, str]], fallback: Union[str, List[str], None] = None, capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
     return await provider_manager.call_with_fallback(provider_model, messages, fallback, capability, status_callback)
+
+async def transcribe_audio(audio_bytes: bytes, provider_name: str = "groq") -> str:
+    return await provider_manager.transcribe_audio(audio_bytes, provider_name)
