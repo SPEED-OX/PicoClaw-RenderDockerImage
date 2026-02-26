@@ -12,9 +12,9 @@
       "api_key": "${GROQ_API_KEY}",
       "base_url": "https://api.groq.com/openai/v1",
       "models": [
-        {"id": "llama3-70b-8192", "free": true},
-        {"id": "mixtral-8x7b-32768", "free": true},
-        {"id": "whisper-large-v3", "free": true}
+        {"id": "llama-3.3-70b-versatile", "free": true},
+        {"id": "llama-3.1-8b-instant", "free": true},
+        {"id": "whisper-large-v3-turbo", "free": true}
       ]
     },
     "google": {
@@ -36,7 +36,7 @@
   "brain": {
     "provider": "google",
     "model": "gemini-2.5-flash",
-    "fallback": "groq/llama3-70b-8192",
+    "fallback": "groq/llama-3.3-70b-versatile",
     "temperature": 0.3,
     "max_tokens": 1024
   },
@@ -48,27 +48,27 @@
     "default": {
       "provider": "openrouter",
       "model": "mistralai/mistral-7b-instruct:free",
-      "fallback": "groq/llama3-70b-8192"
+      "fallback": "groq/llama-3.3-70b-versatile"
     },
     "reason": {
       "provider": "deepseek",
       "model": "deepseek-reasoner",
-      "fallback": "groq/llama3-70b-8192"
+      "fallback": "groq/llama-3.3-70b-versatile"
     },
     "search": {
       "provider": "groq",
-      "model": "llama3-70b-8192",
+      "model": "llama-3.3-70b-versatile",
       "fallback": "openrouter/mistralai/mistral-7b-instruct:free"
     },
     "creative": {
       "provider": "google",
       "model": "gemini-2.5-flash",
-      "fallback": "openrouter/mistralai/mistral-7b-instruct:free"
+      "fallback": "groq/llama-3.3-70b-versatile"
     },
     "code": {
       "provider": "deepseek",
       "model": "deepseek-chat",
-      "fallback": "groq/llama3-70b-8192",
+      "fallback": "groq/llama-3.3-70b-versatile",
       "temperature": 0.1,
       "max_tokens": 4096
     }
@@ -81,7 +81,7 @@
       "code": ["code", "debug", "fix", "function", "script", "error", "python", "build", "implement", "refactor"]
     },
     "llm_classifier": true,
-    "classifier_model": "openrouter/mistralai/mistral-7b-instruct:free"
+    "classifier_model": "groq/llama-3.3-70b-versatile"
   },
   "load_balancing": "round_robin",
   "bot": {

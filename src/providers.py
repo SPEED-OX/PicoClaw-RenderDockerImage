@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import httpx
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, Union
 from src import config
 
 logger = logging.getLogger(__name__)
@@ -251,33 +251,41 @@ class ProviderManager:
         except Exception as e:
             raise ProviderError(f"Provider call failed: {str(e)}")
 
-    async def call_with_fallback(self, provider_model: str, messages: List[Dict[str, str]], fallback: Optional[str] = None, capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
+    async def call_with_fallback(self, provider_model: str, messages: List[Dict[str, str]], fallback: Union[str, List[str], None] = None, capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
         if "/" in provider_model:
             primary_provider, primary_model = provider_model.split("/", 1)
         else:
             primary_provider = config.DEFAULT_PROVIDER
             primary_model = provider_model
 
+        if fallback is None:
+            fallbacks = []
+        elif isinstance(fallback, str):
+            fallbacks = [fallback]
+        else:
+            fallbacks = fallback
+
         try:
             return await self.call_provider(primary_provider, primary_model, messages, capability, status_callback)
-        except ProviderError as e:
-            if fallback:
-                if "/" in fallback:
-                    fallback_provider, fallback_model = fallback.split("/", 1)
+        except ProviderError as primary_error:
+            last_error = primary_error
+            for fb in fallbacks:
+                if "/" in fb:
+                    fb_provider, fb_model = fb.split("/", 1)
                 else:
-                    fallback_provider = config.DEFAULT_PROVIDER
-                    fallback_model = fallback
-                
+                    fb_provider = config.DEFAULT_PROVIDER
+                    fb_model = fb
                 try:
-                    return await self.call_provider(fallback_provider, fallback_model, messages, capability, status_callback)
-                except ProviderError:
-                    raise ProviderError(f"Primary failed: {e}, Fallback also failed")
-            raise
+                    return await self.call_provider(fb_provider, fb_model, messages, capability, status_callback)
+                except ProviderError as e:
+                    last_error = e
+                    continue
+            raise ProviderError(f"All providers failed. Last error: {last_error}")
 
 provider_manager = ProviderManager()
 
 async def call_provider(provider_name: str, model: str, messages: List[Dict[str, str]], capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
     return await provider_manager.call_provider(provider_name, model, messages, capability, status_callback)
 
-async def call_with_fallback(provider_model: str, messages: List[Dict[str, str]], fallback: Optional[str] = None, capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
+async def call_with_fallback(provider_model: str, messages: List[Dict[str, str]], fallback: Union[str, List[str], None] = None, capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
     return await provider_manager.call_with_fallback(provider_model, messages, fallback, capability, status_callback)

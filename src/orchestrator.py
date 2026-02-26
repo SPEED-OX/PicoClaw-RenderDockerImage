@@ -146,7 +146,10 @@ async def ask_brain_directly(chat_id: int, message: str, status_callback=None) -
     brain_config = config.BOT_CONFIG.get("brain", {})
     provider = brain_config.get("provider", "google")
     model = brain_config.get("model", "gemini-2.5-flash")
-    fallback = brain_config.get("fallback", "groq/llama3-70b-8192")
+    fallback = [
+        "groq/llama-3.3-70b-versatile",
+        "openrouter/mistralai/mistral-7b-instruct:free"
+    ]
     
     history = await db.get_conversation_history(chat_id)
     messages = [
@@ -188,7 +191,10 @@ async def synthesize_with_context(chat_id: int, original_message: str, search_re
         model = brain_config.get("model", "gemini-2.5-flash")
         provider_model = f"{provider}/{model}"
     
-    fallback = brain_config.get("fallback", "groq/llama3-70b-8192")
+    fallback = [
+        "groq/llama-3.3-70b-versatile",
+        "openrouter/mistralai/mistral-7b-instruct:free"
+    ]
     
     context_content = search_results
     if full_content:
@@ -284,7 +290,7 @@ async def transcribe_audio(audio_bytes: Optional[bytes]) -> str:
             {"role": "system", "content": "You transcribe audio to text. Return only the transcription."},
             {"role": "user", "content": "Transcribe this audio file."}
         ]
-        response = await providers.call_with_fallback("groq/whisper-large-v3", messages, "groq/whisper-large-v3")
+        response = await providers.call_with_fallback("groq/whisper-large-v3-turbo", messages, "groq/whisper-large-v3-turbo")
         return response
     except Exception as e:
         return f"Transcription error: {str(e)}"
@@ -297,7 +303,7 @@ async def analyze_image(image_bytes: Optional[bytes], prompt: str) -> str:
             {"role": "system", "content": "You analyze images and describe them. Be detailed but concise."},
             {"role": "user", "content": f"Describe this image. User context: {prompt}"}
         ]
-        response = await providers.call_with_fallback("google/gemini-2.5-flash", messages, "groq/llama3-70b-8192")
+        response = await providers.call_with_fallback("google/gemini-2.5-flash", messages, "groq/llama-3.3-70b-versatile")
         return response
     except Exception as e:
         return f"Image analysis error: {str(e)}"
@@ -326,7 +332,7 @@ async def code_completion(chat_id: int, prompt: str, status_callback=None) -> st
             {"role": "system", "content": "You are a code completion assistant. Provide code snippets."},
             {"role": "user", "content": prompt}
         ]
-        response = await providers.call_with_fallback("deepseek/deepseek-chat", messages, "groq/llama3-70b-8192", status_callback=status_callback)
+        response = await providers.call_with_fallback("deepseek/deepseek-chat", messages, "groq/llama-3.3-70b-versatile", status_callback=status_callback)
         return response
     except Exception as e:
         return f"Code completion error: {str(e)}"

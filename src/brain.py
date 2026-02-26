@@ -68,13 +68,35 @@ async def get_conversation_context(chat_id: int) -> str:
         context_lines.append(f"{role}: {content}")
     return "\n".join(context_lines)
 
+def _is_simple_message(message: str) -> bool:
+    if len(message) > 60:
+        return False
+    complex_indicators = [
+        "?", "search", "find", "latest", "news", "write", "code",
+        "debug", "fix", "explain", "why", "how", "what", "compare",
+        "analyze", "calculate", "translate", "summarize", "generate"
+    ]
+    message_lower = message.lower()
+    return not any(indicator in message_lower for indicator in complex_indicators)
+
 async def decide(chat_id: int, message: str, media: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     brain_config = config.BOT_CONFIG.get("brain", {})
-    provider = brain_config.get("provider", "google")
-    model = brain_config.get("model", "gemini-2.5-flash")
-    fallback = brain_config.get("fallback", "groq/llama3-70b-8192")
-    temperature = brain_config.get("temperature", 0.3)
-    max_tokens = brain_config.get("max_tokens", 1024)
+
+    if _is_simple_message(message) and not media:
+        provider_name = "groq"
+        model_name = "llama-3.3-70b-versatile"
+        fallback = [
+            "openrouter/mistralai/mistral-7b-instruct:free"
+        ]
+        logger.info(f"Brain (fast tier): provider={provider_name}, model={model_name}")
+    else:
+        provider_name = brain_config.get("provider", "google")
+        model_name = brain_config.get("model", "gemini-2.5-flash")
+        fallback = [
+            "groq/llama-3.3-70b-versatile",
+            "openrouter/mistralai/mistral-7b-instruct:free"
+        ]
+        logger.info(f"Brain (full tier): provider={provider_name}, model={model_name}")
 
     context = await get_conversation_context(chat_id)
     
@@ -101,14 +123,6 @@ User message: {message}
     ]
 
     try:
-        if "/" in model:
-            provider_name, model_name = model.split("/", 1)
-        else:
-            provider_name = provider
-            model_name = model
-
-        logger.info(f"Brain: provider={provider_name}, model={model_name}")
-
         if provider_name == "google":
             system_content = "You are PicoClaw's brain. Always respond with valid JSON only."
         else:
