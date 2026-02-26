@@ -540,6 +540,116 @@ logger.error("Something failed")
 
 ---
 
+## Brain Architecture
+
+The brain is the central intelligence of PicoClaw. Every user message passes through the brain first to decide how to handle it.
+
+### New Files
+
+- **src/brain.py** — Central intelligence that decides how to handle user messages
+- **src/orchestrator.py** — Executes brain decisions and coordinates tool execution
+
+### Brain Decision Flow
+
+```
+User message → brain.decide() → orchestrator.execute() → tools → response
+```
+
+### Brain Decision JSON Schema
+
+```json
+{
+  "action": "answer_directly | search_and_answer | search_only | specialist | multi_step | transcribe | vision | embeddings_search | code_fim",
+  "confidence": "high | medium | low",
+  "search_query": "string or null",
+  "fetch_full_page": false,
+  "specialist": "reason | creative | code | null",
+  "capability": "chat | transcribe | vision | embeddings | fim",
+  "reasoning": "one line why this decision was made",
+  "response": "direct answer string or null if tools needed"
+}
+```
+
+### Action Types
+
+| Action | Description |
+|--------|-------------|
+| `answer_directly` | Brain knows the answer confidently |
+| `search_and_answer` | Fetch web results, inject into brain context, synthesize final answer |
+| `search_only` | Return raw search results without synthesis |
+| `specialist` | Hand to reason/creative/code agent |
+| `multi_step` | Search first, then pass results to specialist |
+| `transcribe` | Audio transcription via Groq Whisper |
+| `vision` | Image analysis via Google Vision |
+| `embeddings_search` | Semantic search through user's notes |
+| `code_fim` | Code completion via DeepSeek FIM |
+
+### Capability Endpoints
+
+The providers.py now auto-detects the correct endpoint based on capability:
+
+```python
+PROVIDER_ENDPOINTS = {
+    "groq": {
+        "chat": "/openai/v1/chat/completions",
+        "transcribe": "/openai/v1/audio/transcriptions",
+        "translate": "/openai/v1/audio/translations"
+    },
+    "google": {
+        "chat": "/v1beta/openai/chat/completions",
+        "embeddings": "/v1beta/openai/embeddings",
+        "vision": "/v1beta/openai/chat/completions"
+    },
+    "openrouter": {
+        "chat": "/api/v1/chat/completions",
+        "embeddings": "/api/v1/embeddings"
+    },
+    "deepseek": {
+        "chat": "/v1/chat/completions",
+        "fim": "/v1/fim/completions"
+    }
+}
+```
+
+### Free Model Enforcement
+
+When `settings.free_only: true` in config.json, non-free models will be rejected and fallback will trigger automatically.
+
+### Config.json Structure
+
+```json
+{
+  "brain": {
+    "provider": "google",
+    "model": "gemini-1.5-flash",
+    "fallback": "groq/llama3-70b-8192",
+    "temperature": 0.3,
+    "max_tokens": 1024
+  },
+  "settings": {
+    "free_only": true,
+    "max_response_chars": 4000
+  },
+  "agents": {
+    "default": { "temperature": 0.7, "max_tokens": 1024 },
+    "reason": { "temperature": 0.2, "max_tokens": 4096 },
+    "creative": { "temperature": 0.9, "max_tokens": 2048 },
+    "code": { "temperature": 0.1, "max_tokens": 4096 }
+  }
+}
+```
+
+---
+
+## Branch Strategy
+
+- **brain-refactor** — Active development branch for the brain refactor
+- **main** — Stable production branch
+
+Do NOT merge brain-refactor to main until testing is complete.
+
+---
+
 ## Adding New Features
 
 1. **New command**: Add handler in `bot.py`, register in `main.py`
