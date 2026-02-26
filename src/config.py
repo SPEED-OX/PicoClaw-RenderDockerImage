@@ -93,6 +93,11 @@ def get_agent_config(agent_name: str) -> Optional[Dict[str, Any]]:
 def get_all_models() -> List[str]:
     models = []
     for provider_name, provider_config in PROVIDERS.items():
-        for model in provider_config.get("models", []):
-            models.append(f"{provider_name}/{model}")
+        for model_entry in provider_config.get("models", []):
+            if isinstance(model_entry, dict):
+                model_id = model_entry.get("id", "")
+            else:
+                model_id = str(model_entry)
+            if model_id:
+                models.append(f"{provider_name}/{model_id}")
     return models

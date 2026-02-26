@@ -12,16 +12,16 @@
       "api_key": "${GROQ_API_KEY}",
       "base_url": "https://api.groq.com/openai/v1",
       "models": [
-        {"id": "llama3-70b-8192", "free": false},
-        {"id": "mixtral-8x7b-32768", "free": false},
-        {"id": "whisper-large-v3", "free": false}
+        {"id": "llama3-70b-8192", "free": true},
+        {"id": "mixtral-8x7b-32768", "free": true}
       ]
     },
     "google": {
       "api_key": "${GOOGLE_API_KEY}",
       "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
       "models": [
-        {"id": "gemini-1.5-flash", "free": false},
+        {"id": "gemini-2.0-flash", "free": true},
+        {"id": "gemini-1.5-flash", "free": true},
         {"id": "gemini-1.5-pro", "free": false}
       ]
     },
@@ -30,51 +30,13 @@
       "base_url": "https://api.deepseek.com/v1",
       "models": [
         {"id": "deepseek-chat", "free": false},
-        {"id": "deepseek-reasoner", "free": false},
-        {"id": "deepseek-coder", "free": false}
+        {"id": "deepseek-reasoner", "free": false}
       ]
-    }
-  },
-  "agents": {
-    "default": {
-      "provider": "openrouter",
-      "model": "mistralai/mistral-7b-instruct:free",
-      "fallback": "groq/llama3-70b-8192",
-      "temperature": 0.7,
-      "max_tokens": 1024
-    },
-    "reason": {
-      "provider": "deepseek",
-      "model": "deepseek-reasoner",
-      "fallback": "groq/llama3-70b-8192",
-      "temperature": 0.2,
-      "max_tokens": 4096
-    },
-    "search": {
-      "provider": "groq",
-      "model": "llama3-70b-8192",
-      "fallback": "openrouter/mistralai/mistral-7b-instruct:free",
-      "temperature": 0.5,
-      "max_tokens": 1024
-    },
-    "creative": {
-      "provider": "google",
-      "model": "gemini-1.5-flash",
-      "fallback": "openrouter/mistralai/mistral-7b-instruct:free",
-      "temperature": 0.9,
-      "max_tokens": 2048
-    },
-    "code": {
-      "provider": "deepseek",
-      "model": "deepseek-coder",
-      "fallback": "groq/llama3-70b-8192",
-      "temperature": 0.1,
-      "max_tokens": 4096
     }
   },
   "brain": {
     "provider": "google",
-    "model": "gemini-1.5-flash",
+    "model": "gemini-2.0-flash",
     "fallback": "groq/llama3-70b-8192",
     "temperature": 0.3,
     "max_tokens": 1024
@@ -82,6 +44,35 @@
   "settings": {
     "free_only": true,
     "max_response_chars": 4000
+  },
+  "agents": {
+    "default": {
+      "provider": "openrouter",
+      "model": "mistralai/mistral-7b-instruct:free",
+      "fallback": "groq/llama3-70b-8192"
+    },
+    "reason": {
+      "provider": "deepseek",
+      "model": "deepseek-reasoner",
+      "fallback": "groq/llama3-70b-8192"
+    },
+    "search": {
+      "provider": "groq",
+      "model": "llama3-70b-8192",
+      "fallback": "openrouter/mistralai/mistral-7b-instruct:free"
+    },
+    "creative": {
+      "provider": "google",
+      "model": "gemini-2.0-flash",
+      "fallback": "openrouter/mistralai/mistral-7b-instruct:free"
+    },
+    "code": {
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "fallback": "groq/llama3-70b-8192",
+      "temperature": 0.1,
+      "max_tokens": 4096
+    }
   },
   "routing": {
     "keywords": {

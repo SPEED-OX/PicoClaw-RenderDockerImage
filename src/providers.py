@@ -58,16 +58,21 @@ class ProviderManager:
             return endpoint
         return "/chat/completions"
 
+    def _extract_model_id(self, model_entry: Any) -> str:
+        if isinstance(model_entry, dict):
+            return model_entry.get("id", "")
+        return str(model_entry) if model_entry else ""
+
     def _is_model_free(self, provider_name: str, model: str) -> bool:
         provider_config = self.providers.get(provider_name, {})
         models_list = provider_config.get("models", [])
         
         for m in models_list:
-            if isinstance(m, dict):
-                if m.get("id") == model:
-                    return m.get("free", False)
-            elif isinstance(m, str) and m == model:
-                return ":free" in m
+            extracted_id = self._extract_model_id(m)
+            if extracted_id == model:
+                if isinstance(m, dict):
+                    return m.get("free", ":free" in model)
+                return ":free" in model
         
         return ":free" in model
 
@@ -81,15 +86,17 @@ class ProviderManager:
         provider_config = self.providers.get(provider_name, {})
         models_list = provider_config.get("models", [])
         
+        is_free = False
         for m in models_list:
-            if isinstance(m, dict):
-                if m.get("id") == model and not m.get("free", True):
-                    raise ProviderError(f"Model {model} is not free")
-            elif isinstance(m, str) and m == model:
-                if not m.endswith(":free"):
-                    raise ProviderError(f"Model {model} is not free")
+            extracted_id = self._extract_model_id(m)
+            if extracted_id == model:
+                if isinstance(m, dict):
+                    is_free = m.get("free", False)
+                else:
+                    is_free = ":free" in m
+                break
         
-        if not model.endswith(":free"):
+        if not is_free and not model.endswith(":free"):
             raise ProviderError(f"Model {model} is not free")
 
     async def call_provider(self, provider_name: str, model: str, messages: List[Dict[str, str]], capability: str = "chat") -> str:
