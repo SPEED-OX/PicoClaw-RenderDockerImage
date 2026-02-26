@@ -406,7 +406,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = await orchestrator.execute(chat_id, text, bot=context.bot, status_message_id=status_msg.message_id)
 
     if isinstance(response, list):
-        await status_msg.delete()
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
         for part in response:
             await context.bot.send_message(chat_id=chat_id, text=part)
     else:
@@ -417,6 +420,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=response
             )
         except Exception:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
             await context.bot.send_message(chat_id=chat_id, text=response)
 
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -435,13 +442,20 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = await orchestrator.execute(chat_id, "[voice message]", media={"type": "voice", "file": audio_data}, bot=context.bot, status_message_id=status_msg.message_id)
         
         if isinstance(response, list):
-            await status_msg.delete()
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
             for part in response:
                 await context.bot.send_message(chat_id=chat_id, text=part)
         else:
             try:
                 await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response)
             except Exception:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
                 await context.bot.send_message(chat_id=chat_id, text=response)
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"Voice processing error: {str(e)}")
@@ -463,13 +477,20 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = await orchestrator.execute(chat_id, caption, media={"type": "image", "file": image_data}, bot=context.bot, status_message_id=status_msg.message_id)
         
         if isinstance(response, list):
-            await status_msg.delete()
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
             for part in response:
                 await context.bot.send_message(chat_id=chat_id, text=part)
         else:
             try:
                 await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=response)
             except Exception:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
                 await context.bot.send_message(chat_id=chat_id, text=response)
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"Photo processing error: {str(e)}")
@@ -508,5 +529,12 @@ def setup_bot():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, voice_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+
+    async def error_handler(update, context):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Unhandled exception: {context.error}", exc_info=context.error)
+
+    app.add_error_handler(error_handler)
     
     return app

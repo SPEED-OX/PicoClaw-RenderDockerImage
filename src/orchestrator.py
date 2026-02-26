@@ -30,6 +30,9 @@ async def _update_status(bot, chat_id: int, message_id: int, text: str):
             pass
 
 async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = None, bot=None, status_message_id: Optional[int] = None) -> Union[str, List[str]]:
+    async def status_callback(text: str):
+        await _update_status(bot, chat_id, status_message_id, text)
+
     decision = await brain.decide(chat_id, message, media)
     
     action = decision.get("action", "answer_directly")
@@ -43,10 +46,10 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
 
     logger.info(f"Orchestrator: action={action}, specialist={specialist}, confidence={confidence}")
 
-    status_text = STATUS_TEXTS.get(action, "💭 Thinking...")
-    if action == "specialist" and isinstance(status_text, dict):
-        status_text = status_text.get(str(specialist) if specialist else "default", "💭 Thinking...")
-    await _update_status(bot, chat_id, status_message_id, status_text)
+    action_status = STATUS_TEXTS.get(action, "💭 Thinking...")
+    if action == "specialist" and specialist:
+        action_status = STATUS_TEXTS.get("specialist", {}).get(specialist, "💭 Thinking...")
+    await _update_status(bot, chat_id, status_message_id, action_status)
 
     await db.log_command(chat_id, action, reasoning)
 
@@ -75,14 +78,14 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
                 top_url = await extract_top_url(search_query)
                 if top_url:
                     full_content = await browser.browse_url(top_url)
-                    response = await synthesize_with_context(chat_id, message, search_results, full_content)
+                    response = await synthesize_with_context(chat_id, message, search_results, full_content, status_callback)
                 else:
-                    response = await synthesize_with_context(chat_id, message, search_results, None)
+                    response = await synthesize_with_context(chat_id, message, search_results, None, status_callback)
             else:
                 response = search_results
         else:
             search_results = await search.search_web(search_query)
-            response = await synthesize_with_context(chat_id, message, search_results, None)
+            response = await synthesize_with_context(chat_id, message, search_results, None, status_callback)
         
         return truncate_response(response)
 
@@ -95,7 +98,7 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
     elif action == "specialist":
         if not specialist:
             specialist = "default"
-        response = await call_specialist(chat_id, message, str(specialist))
+        response = await call_specialist(chat_id, message, str(specialist), status_callback)
         return truncate_response(response)
 
     elif action == "multi_step":
@@ -105,7 +108,7 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
         search_results = await search.search_web(search_query)
         if not specialist:
             specialist = "default"
-        response = await call_specialist_with_context(chat_id, message, str(specialist), search_results)
+        response = await call_specialist_with_context(chat_id, message, str(specialist), search_results, status_callback)
         return truncate_response(response)
 
     elif action == "transcribe":
@@ -127,19 +130,19 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
         return truncate_response(response)
 
     elif action == "embeddings_search":
-        response = await search_notes(chat_id, message)
+        response = await search_notes(chat_id, message, status_callback)
         return truncate_response(response)
 
     elif action == "code_fim":
-        response = await code_completion(chat_id, message)
+        response = await code_completion(chat_id, message, status_callback)
         return truncate_response(response)
 
     else:
         if direct_response:
             return truncate_response(direct_response)
-        return await ask_brain_directly(chat_id, message)
+        return await ask_brain_directly(chat_id, message, status_callback)
 
-async def ask_brain_directly(chat_id: int, message: str) -> str:
+async def ask_brain_directly(chat_id: int, message: str, status_callback=None) -> str:
     brain_config = config.BOT_CONFIG.get("brain", {})
     provider = brain_config.get("provider", "google")
     model = brain_config.get("model", "gemini-2.5-flash")
@@ -153,7 +156,7 @@ async def ask_brain_directly(chat_id: int, message: str) -> str:
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": message})
     
-    return await providers.call_with_fallback(f"{provider}/{model}", messages, fallback)
+    return await providers.call_with_fallback(f"{provider}/{model}", messages, fallback, status_callback=status_callback)
 
 async def quick_verify(query: str) -> str:
     try:
@@ -174,7 +177,7 @@ async def extract_top_url(query: str) -> str:
         pass
     return ""
 
-async def synthesize_with_context(chat_id: int, original_message: str, search_results: str, full_content: Optional[str]) -> str:
+async def synthesize_with_context(chat_id: int, original_message: str, search_results: str, full_content: Optional[str], status_callback=None) -> str:
     session = await db.get_session(chat_id)
     brain_config = config.BOT_CONFIG.get("brain", {})
     
@@ -206,27 +209,25 @@ Provide a direct, concise answer."""
     ]
 
     try:
-        response = await providers.call_with_fallback(provider_model, messages, fallback)
+        response = await providers.call_with_fallback(provider_model, messages, fallback, status_callback=status_callback)
         await db.add_message(chat_id, "user", original_message)
         await db.add_message(chat_id, "assistant", response)
         return response
     except Exception as e:
         return f"Error synthesizing answer: {str(e)}"
 
-async def call_specialist(chat_id: int, message: str, specialist: str) -> str:
+async def call_specialist(chat_id: int, message: str, specialist: str, status_callback=None) -> str:
     session = await db.get_session(chat_id)
     
+    agent_config = config.get_agent_config(specialist) or config.get_agent_config("default") or {}
+    fallback = agent_config.get("fallback")
+
     if session.get("model_override"):
         provider_model = session.get("model_override")
     else:
-        agent_config = config.get_agent_config(specialist)
-        if not agent_config:
-            agent_config = config.get_agent_config("default")
         provider = agent_config.get("provider", config.DEFAULT_PROVIDER)
         model = agent_config.get("model", config.DEFAULT_MODEL)
         provider_model = f"{provider}/{model}"
-    
-    fallback = agent_config.get("fallback") if agent_config else None
     
     messages = [
         {"role": "system", "content": config.BOT_SETTINGS.get("personality", "You are PicoClaw.")},
@@ -234,27 +235,25 @@ async def call_specialist(chat_id: int, message: str, specialist: str) -> str:
     ]
 
     try:
-        response = await providers.call_with_fallback(provider_model, messages, fallback)
+        response = await providers.call_with_fallback(provider_model, messages, fallback, status_callback=status_callback)
         await db.add_message(chat_id, "user", message)
         await db.add_message(chat_id, "assistant", response)
         return response
     except Exception as e:
         return f"Error: {str(e)}"
 
-async def call_specialist_with_context(chat_id: int, message: str, specialist: str, context: str) -> str:
+async def call_specialist_with_context(chat_id: int, message: str, specialist: str, context: str, status_callback=None) -> str:
     session = await db.get_session(chat_id)
     
+    agent_config = config.get_agent_config(specialist) or config.get_agent_config("default") or {}
+    fallback = agent_config.get("fallback")
+
     if session.get("model_override"):
         provider_model = session.get("model_override")
     else:
-        agent_config = config.get_agent_config(specialist)
-        if not agent_config:
-            agent_config = config.get_agent_config("default")
         provider = agent_config.get("provider", config.DEFAULT_PROVIDER)
         model = agent_config.get("model", config.DEFAULT_MODEL)
         provider_model = f"{provider}/{model}"
-    
-    fallback = agent_config.get("fallback") if agent_config else None
     
     prompt = f"""Based on the user's request and search results, provide a response.
 
@@ -270,7 +269,7 @@ Search results:
     ]
 
     try:
-        response = await providers.call_with_fallback(provider_model, messages, fallback)
+        response = await providers.call_with_fallback(provider_model, messages, fallback, status_callback=status_callback)
         await db.add_message(chat_id, "user", message)
         await db.add_message(chat_id, "assistant", response)
         return response
@@ -303,7 +302,7 @@ async def analyze_image(image_bytes: Optional[bytes], prompt: str) -> str:
     except Exception as e:
         return f"Image analysis error: {str(e)}"
 
-async def search_notes(chat_id: int, query: str) -> str:
+async def search_notes(chat_id: int, query: str, status_callback=None) -> str:
     try:
         notes = await db.get_notes(chat_id)
         if not notes:
@@ -316,18 +315,18 @@ async def search_notes(chat_id: int, query: str) -> str:
             {"role": "user", "content": f"Query: {query}\n\nUser's notes:\n{notes_text}\n\nProvide relevant notes."}
         ]
         
-        response = await providers.call_with_fallback("openrouter/mistralai/mistral-7b-instruct:free", messages)
+        response = await providers.call_with_fallback("openrouter/mistralai/mistral-7b-instruct:free", messages, status_callback=status_callback)
         return response
     except Exception as e:
         return f"Notes search error: {str(e)}"
 
-async def code_completion(chat_id: int, prompt: str) -> str:
+async def code_completion(chat_id: int, prompt: str, status_callback=None) -> str:
     try:
         messages = [
             {"role": "system", "content": "You are a code completion assistant. Provide code snippets."},
             {"role": "user", "content": prompt}
         ]
-        response = await providers.call_with_fallback("deepseek/deepseek-chat", messages, "groq/llama3-70b-8192")
+        response = await providers.call_with_fallback("deepseek/deepseek-chat", messages, "groq/llama3-70b-8192", status_callback=status_callback)
         return response
     except Exception as e:
         return f"Code completion error: {str(e)}"

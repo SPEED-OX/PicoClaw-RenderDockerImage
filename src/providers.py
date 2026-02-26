@@ -1,6 +1,10 @@
+import asyncio
+import logging
 import httpx
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from src import config
+
+logger = logging.getLogger(__name__)
 
 PROVIDER_ENDPOINTS = {
     "groq": {
@@ -178,7 +182,7 @@ class ProviderManager:
         except Exception as e:
             raise ProviderError(f"Google API call failed: {str(e)}")
 
-    async def call_provider(self, provider_name: str, model: str, messages: List[Dict[str, str]], capability: str = "chat") -> str:
+    async def call_provider(self, provider_name: str, model: str, messages: List[Dict[str, str]], capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
         if provider_name == "google":
             brain_config = config.BOT_CONFIG.get("brain", {})
             temperature = brain_config.get("temperature", 0.3)
@@ -200,7 +204,7 @@ class ProviderManager:
         endpoint_path = self._get_endpoint(provider_name, capability)
         endpoint = f"{base_url.rstrip('/')}/{endpoint_path.lstrip('/')}"
 
-        try:
+        async def do_request():
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
                     endpoint,
@@ -220,14 +224,34 @@ class ProviderManager:
                     return data["choices"][0]["message"]["content"]
                 except (KeyError, IndexError):
                     raise ProviderError("No response content from provider")
+
+        try:
+            return await do_request()
         except httpx.HTTPStatusError as e:
-            raise ProviderError(f"Provider API error: {e.response.status_code}")
+            if e.response.status_code == 429:
+                if status_callback:
+                    try:
+                        await status_callback("⏳ Retrying in 3s...")
+                    except Exception:
+                        pass
+                await asyncio.sleep(3)
+                try:
+                    return await do_request()
+                except httpx.HTTPStatusError as retry_error:
+                    if retry_error.response.status_code == 429:
+                        raise ProviderError(f"Provider API error after retry: {retry_error.response.status_code}")
+                    raise
+            elif e.response.status_code == 400:
+                logger.warning(f"Provider {provider_name} returned 400: {e.response.text[:200]}")
+                raise ProviderError(f"Provider API error: {e.response.status_code}")
+            else:
+                raise ProviderError(f"Provider API error: {e.response.status_code}")
         except ProviderError:
             raise
         except Exception as e:
             raise ProviderError(f"Provider call failed: {str(e)}")
 
-    async def call_with_fallback(self, provider_model: str, messages: List[Dict[str, str]], fallback: Optional[str] = None, capability: str = "chat") -> str:
+    async def call_with_fallback(self, provider_model: str, messages: List[Dict[str, str]], fallback: Optional[str] = None, capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
         if "/" in provider_model:
             primary_provider, primary_model = provider_model.split("/", 1)
         else:
@@ -235,7 +259,7 @@ class ProviderManager:
             primary_model = provider_model
 
         try:
-            return await self.call_provider(primary_provider, primary_model, messages, capability)
+            return await self.call_provider(primary_provider, primary_model, messages, capability, status_callback)
         except ProviderError as e:
             if fallback:
                 if "/" in fallback:
@@ -245,15 +269,15 @@ class ProviderManager:
                     fallback_model = fallback
                 
                 try:
-                    return await self.call_provider(fallback_provider, fallback_model, messages, capability)
+                    return await self.call_provider(fallback_provider, fallback_model, messages, capability, status_callback)
                 except ProviderError:
                     raise ProviderError(f"Primary failed: {e}, Fallback also failed")
             raise
 
 provider_manager = ProviderManager()
 
-async def call_provider(provider_name: str, model: str, messages: List[Dict[str, str]], capability: str = "chat") -> str:
-    return await provider_manager.call_provider(provider_name, model, messages, capability)
+async def call_provider(provider_name: str, model: str, messages: List[Dict[str, str]], capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
+    return await provider_manager.call_provider(provider_name, model, messages, capability, status_callback)
 
-async def call_with_fallback(provider_model: str, messages: List[Dict[str, str]], fallback: Optional[str] = None, capability: str = "chat") -> str:
-    return await provider_manager.call_with_fallback(provider_model, messages, fallback, capability)
+async def call_with_fallback(provider_model: str, messages: List[Dict[str, str]], fallback: Optional[str] = None, capability: str = "chat", status_callback: Optional[Callable] = None) -> str:
+    return await provider_manager.call_with_fallback(provider_model, messages, fallback, capability, status_callback)

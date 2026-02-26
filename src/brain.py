@@ -109,6 +109,20 @@ User message: {message}
 
         logger.info(f"Brain: provider={provider_name}, model={model_name}")
 
+        if provider_name == "google":
+            system_content = "You are PicoClaw's brain. Always respond with valid JSON only."
+        else:
+            system_content = (
+                "You are PicoClaw's brain. Analyze the user message and respond with a JSON object only. "
+                "No explanations, no markdown, just raw JSON matching this schema: "
+                "{action, confidence, search_query, fetch_full_page, specialist, capability, reasoning, response}"
+            )
+
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": prompt}
+        ]
+
         response = await providers.call_with_fallback(
             f"{provider_name}/{model_name}",
             messages,
