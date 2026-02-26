@@ -641,6 +641,10 @@ When `settings.free_only: true` in config.json, non-free models will be rejected
 
 ---
 
+**Note on agents.default**: The default agent is only used when the user manually overrides the model via the `/model` command. All automatic responses are handled by the brain (brain.model), not agents.default.
+
+---
+
 ## Branch Strategy
 
 - **brain-refactor** — Active development branch for the brain refactor

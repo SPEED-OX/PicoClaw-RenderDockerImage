@@ -21,13 +21,15 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
         if direct_response:
             response = direct_response
         else:
-            response = await answer_directly(chat_id, message)
+            response = await ask_brain_directly(chat_id, message)
         
         if confidence == "low":
             web_result = await quick_verify(message)
-            if web_result and "error" not in web_result.lower():
-                response += f"\n\n[Verified: {web_result[:200]}...]"
+            if web_result:
+                response += f"\n\n[Verified via web: {web_result[:200]}]"
         
+        await db.add_message(chat_id, "user", message)
+        await db.add_message(chat_id, "assistant", response)
         return truncate_response(response)
 
     elif action == "search_and_answer":
@@ -92,36 +94,23 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
     else:
         if direct_response:
             return truncate_response(direct_response)
-        return await answer_directly(chat_id, message)
+        return await ask_brain_directly(chat_id, message)
 
-async def answer_directly(chat_id: int, message: str) -> str:
-    session = await db.get_session(chat_id)
-    agent_config = config.get_agent_config("default")
+async def ask_brain_directly(chat_id: int, message: str) -> str:
+    brain_config = config.BOT_CONFIG.get("brain", {})
+    provider = brain_config.get("provider", "google")
+    model = brain_config.get("model", "gemini-2.5-flash")
+    fallback = brain_config.get("fallback", "groq/llama3-70b-8192")
     
-    provider = agent_config.get("provider", config.DEFAULT_PROVIDER)
-    model = agent_config.get("model", config.DEFAULT_MODEL)
-    fallback = agent_config.get("fallback")
-    
-    if session.get("model_override"):
-        provider_model = session.get("model_override")
-    else:
-        provider_model = f"{provider}/{model}"
-
     history = await db.get_conversation_history(chat_id)
     messages = [
-        {"role": "system", "content": config.BOT_SETTINGS.get("personality", "You are PicoClaw, a sharp personal assistant.")}
+        {"role": "system", "content": config.BOT_SETTINGS.get("personality", "You are PicoClaw.")},
     ]
     for msg in history:
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": message})
-
-    try:
-        response = await providers.call_with_fallback(provider_model, messages, fallback)
-        await db.add_message(chat_id, "user", message)
-        await db.add_message(chat_id, "assistant", response)
-        return response
-    except Exception as e:
-        return f"Error: {str(e)}"
+    
+    return await providers.call_with_fallback(f"{provider}/{model}", messages, fallback)
 
 async def quick_verify(query: str) -> str:
     try:
@@ -144,17 +133,17 @@ async def extract_top_url(query: str) -> str:
 
 async def synthesize_with_context(chat_id: int, original_message: str, search_results: str, full_content: Optional[str]) -> str:
     session = await db.get_session(chat_id)
-    agent_config = config.get_agent_config("default")
-    
-    provider = agent_config.get("provider", config.DEFAULT_PROVIDER)
-    model = agent_config.get("model", config.DEFAULT_MODEL)
-    fallback = agent_config.get("fallback")
     
     if session.get("model_override"):
         provider_model = session.get("model_override")
     else:
+        brain_config = config.BOT_CONFIG.get("brain", {})
+        provider = brain_config.get("provider", "google")
+        model = brain_config.get("model", "gemini-2.5-flash")
         provider_model = f"{provider}/{model}"
-
+    
+    fallback = brain_config.get("fallback", "groq/llama3-70b-8192")
+    
     context_content = search_results
     if full_content:
         context_content += f"\n\nFull page content:\n{full_content[:3000]}"
@@ -182,13 +171,19 @@ Provide a direct, concise answer."""
         return f"Error synthesizing answer: {str(e)}"
 
 async def call_specialist(chat_id: int, message: str, specialist: str) -> str:
-    agent_config = config.get_agent_config(specialist)
-    if not agent_config:
-        agent_config = config.get_agent_config("default")
+    session = await db.get_session(chat_id)
     
-    provider = agent_config.get("provider", config.DEFAULT_PROVIDER)
-    model = agent_config.get("model", config.DEFAULT_MODEL)
-    fallback = agent_config.get("fallback")
+    if session.get("model_override"):
+        provider_model = session.get("model_override")
+    else:
+        agent_config = config.get_agent_config(specialist)
+        if not agent_config:
+            agent_config = config.get_agent_config("default")
+        provider = agent_config.get("provider", config.DEFAULT_PROVIDER)
+        model = agent_config.get("model", config.DEFAULT_MODEL)
+        provider_model = f"{provider}/{model}"
+    
+    fallback = agent_config.get("fallback") if agent_config else None
     
     messages = [
         {"role": "system", "content": config.BOT_SETTINGS.get("personality", "You are PicoClaw.")},
@@ -196,7 +191,7 @@ async def call_specialist(chat_id: int, message: str, specialist: str) -> str:
     ]
 
     try:
-        response = await providers.call_with_fallback(f"{provider}/{model}", messages, fallback)
+        response = await providers.call_with_fallback(provider_model, messages, fallback)
         await db.add_message(chat_id, "user", message)
         await db.add_message(chat_id, "assistant", response)
         return response
@@ -204,13 +199,19 @@ async def call_specialist(chat_id: int, message: str, specialist: str) -> str:
         return f"Error: {str(e)}"
 
 async def call_specialist_with_context(chat_id: int, message: str, specialist: str, context: str) -> str:
-    agent_config = config.get_agent_config(specialist)
-    if not agent_config:
-        agent_config = config.get_agent_config("default")
+    session = await db.get_session(chat_id)
     
-    provider = agent_config.get("provider", config.DEFAULT_PROVIDER)
-    model = agent_config.get("model", config.DEFAULT_MODEL)
-    fallback = agent_config.get("fallback")
+    if session.get("model_override"):
+        provider_model = session.get("model_override")
+    else:
+        agent_config = config.get_agent_config(specialist)
+        if not agent_config:
+            agent_config = config.get_agent_config("default")
+        provider = agent_config.get("provider", config.DEFAULT_PROVIDER)
+        model = agent_config.get("model", config.DEFAULT_MODEL)
+        provider_model = f"{provider}/{model}"
+    
+    fallback = agent_config.get("fallback") if agent_config else None
     
     prompt = f"""Based on the user's request and search results, provide a response.
 
@@ -226,7 +227,7 @@ Search results:
     ]
 
     try:
-        response = await providers.call_with_fallback(f"{provider}/{model}", messages, fallback)
+        response = await providers.call_with_fallback(provider_model, messages, fallback)
         await db.add_message(chat_id, "user", message)
         await db.add_message(chat_id, "assistant", response)
         return response
@@ -250,7 +251,7 @@ async def analyze_image(image_bytes: bytes, prompt: str) -> str:
             {"role": "system", "content": "You analyze images and describe them. Be detailed but concise."},
             {"role": "user", "content": f"Describe this image. User context: {prompt}"}
         ]
-        response = await providers.call_with_fallback("google/gemini-1.5-flash", messages, "openrouter/google/gemini-1.5-flash-8b")
+        response = await providers.call_with_fallback("google/gemini-2.5-flash", messages, "groq/llama3-70b-8192")
         return response
     except Exception as e:
         return f"Image analysis error: {str(e)}"
@@ -279,7 +280,7 @@ async def code_completion(chat_id: int, prompt: str) -> str:
             {"role": "system", "content": "You are a code completion assistant. Provide code snippets."},
             {"role": "user", "content": prompt}
         ]
-        response = await providers.call_with_fallback("deepseek/deepseek-coder", messages, "groq/llama3-70b-8192")
+        response = await providers.call_with_fallback("deepseek/deepseek-chat", messages, "groq/llama3-70b-8192")
         return response
     except Exception as e:
         return f"Code completion error: {str(e)}"
