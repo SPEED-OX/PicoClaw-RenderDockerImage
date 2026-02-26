@@ -1,5 +1,8 @@
+import logging
 from typing import Dict, Any, Optional, List, Union
 from src import brain, search, browser, db, config, providers
+
+logger = logging.getLogger(__name__)
 
 MAX_RESPONSE_CHARS = 4000
 
@@ -14,6 +17,8 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
     capability = decision.get("capability", "chat")
     reasoning = decision.get("reasoning", "")
     direct_response = decision.get("response")
+
+    logger.info(f"Orchestrator: action={action}, specialist={specialist}, confidence={confidence}")
 
     await db.log_command(chat_id, action, reasoning)
 
@@ -143,11 +148,11 @@ async def extract_top_url(query: str) -> str:
 
 async def synthesize_with_context(chat_id: int, original_message: str, search_results: str, full_content: Optional[str]) -> str:
     session = await db.get_session(chat_id)
+    brain_config = config.BOT_CONFIG.get("brain", {})
     
     if session.get("model_override"):
         provider_model = session.get("model_override")
     else:
-        brain_config = config.BOT_CONFIG.get("brain", {})
         provider = brain_config.get("provider", "google")
         model = brain_config.get("model", "gemini-2.5-flash")
         provider_model = f"{provider}/{model}"

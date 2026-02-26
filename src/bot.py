@@ -194,7 +194,12 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not args:
         session = await db.get_session(chat_id)
-        current = session.get("model_override") or config.DEFAULT_MODEL
+        if session.get("model_override"):
+            current = session.get("model_override")
+        else:
+            brain_config = config.BOT_CONFIG.get("brain", {})
+            brain_model = f"{brain_config.get('provider', 'google')}/{brain_config.get('model', 'gemini-2.5-flash')}"
+            current = f"auto (brain: {brain_model})"
         await context.bot.send_message(chat_id=chat_id, text=f"Current model: {current}")
         return
     
@@ -411,7 +416,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         voice = update.message.voice
         file = await context.bot.get_file(voice.file_id)
-        audio_bytes = await asyncio.to_thread(file.download_as_bytearray)
+        audio_bytes = await file.download_as_bytearray()
         audio_data = bytes(audio_bytes)
         
         response = await orchestrator.execute(chat_id, "[voice message]", media={"type": "voice", "file": audio_data})
@@ -433,7 +438,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         photo = update.message.photo[-1]
         file = await context.bot.get_file(photo.file_id)
-        image_bytes = await asyncio.to_thread(file.download_as_bytearray)
+        image_bytes = await file.download_as_bytearray()
         image_data = bytes(image_bytes)
         
         caption = update.message.caption or "Describe this image"

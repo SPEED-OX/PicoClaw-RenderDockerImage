@@ -1,6 +1,9 @@
 import json
+import logging
 from typing import Dict, Any, Optional, List
 from src import config, providers, db
+
+logger = logging.getLogger(__name__)
 
 BRAIN_SYSTEM_PROMPT = """You are PicoClaw's brain — the central intelligence that decides how to handle every user message.
 
@@ -68,7 +71,7 @@ async def get_conversation_context(chat_id: int) -> str:
 async def decide(chat_id: int, message: str, media: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     brain_config = config.BOT_CONFIG.get("brain", {})
     provider = brain_config.get("provider", "google")
-    model = brain_config.get("model", "gemini-1.5-flash")
+    model = brain_config.get("model", "gemini-2.5-flash")
     fallback = brain_config.get("fallback", "groq/llama3-70b-8192")
     temperature = brain_config.get("temperature", 0.3)
     max_tokens = brain_config.get("max_tokens", 1024)
@@ -104,13 +107,17 @@ User message: {message}
             provider_name = provider
             model_name = model
 
+        logger.info(f"Brain: provider={provider_name}, model={model_name}")
+
         response = await providers.call_with_fallback(
             f"{provider_name}/{model_name}",
             messages,
             fallback
         )
 
-        return parse_brain_response(response)
+        decision = parse_brain_response(response)
+        logger.info(f"Brain decision: action={decision.get('action')}, confidence={decision.get('confidence')}, reasoning={decision.get('reasoning')}")
+        return decision
 
     except Exception as e:
         return {
