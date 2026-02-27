@@ -409,6 +409,12 @@ This project follows Python best practices with some specific conventions.
 - **Error handling**: Catch exceptions gracefully, never leak stack traces to users
 - **No secrets**: Never hardcode secrets; use environment variables via `config.py`
 
+### Destroy Command Rules
+
+- Never log `/destroy` command content, password, or mode to any logging system
+- Never add `/destroy` to the bot commands array — it must remain hidden from Telegram menu
+- destroy_log table resets on mode 0 (full wipe) — this is intentional, resets the rate limit counter
+
 ### Imports
 
 ```python

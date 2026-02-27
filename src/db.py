@@ -150,6 +150,14 @@ async def create_tables():
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     """
 
+    create_destroy_log_table = """
+    CREATE TABLE IF NOT EXISTS destroy_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        success BOOL DEFAULT FALSE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """
+
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(create_conversation_table)
@@ -158,6 +166,7 @@ async def create_tables():
             await cur.execute(create_sessions_table)
             await cur.execute(create_notes_table)
             await cur.execute(create_shortcuts_table)
+            await cur.execute(create_destroy_log_table)
 
 async def close_db():
     global pool
@@ -177,6 +186,61 @@ async def add_message(chat_id: int, role: str, content: str):
                 "INSERT INTO conversation_history (chat_id, role, content) VALUES (%s, %s, %s)",
                 (chat_id, role, content)
             )
+
+@retry_on_operational_error
+async def get_destroy_attempts(days: int = 15) -> int:
+    """Count successful destroy calls in the last N days."""
+    cutoff = datetime.now() - timedelta(days=days)
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT COUNT(*) FROM destroy_log WHERE success = TRUE AND attempt_at > %s",
+                (cutoff,)
+            )
+            row = await cur.fetchone()
+            return row[0] if row else 0
+
+@retry_on_operational_error
+async def get_next_destroy_available() -> datetime:
+    """Return datetime when next destroy will be available."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT attempt_at FROM destroy_log WHERE success = TRUE ORDER BY attempt_at ASC LIMIT 1"
+            )
+            row = await cur.fetchone()
+            if row:
+                return row[0] + timedelta(days=15)
+            return datetime.now()
+
+@retry_on_operational_error
+async def log_destroy_attempt(success: bool):
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO destroy_log (success) VALUES (%s)",
+                (success,)
+            )
+
+@retry_on_operational_error
+async def destroy_all() -> list:
+    """Wipe all tables. Returns list of wiped table names."""
+    tables = ["conversation_history", "sessions", "command_logs", "notes", "shortcuts", "reminders", "destroy_log"]
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            for table in tables:
+                await cur.execute(f"DELETE FROM {table}")
+    return tables
+
+@retry_on_operational_error
+async def destroy_partial() -> list:
+    """Wipe all except notes and reminders. Returns list of wiped table names."""
+    tables = ["conversation_history", "sessions", "command_logs", "shortcuts", "destroy_log"]
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            for table in tables:
+                await cur.execute(f"DELETE FROM {table}")
+    return tables
 
 @retry_on_operational_error
 async def get_conversation_history(chat_id: int, limit: int = None) -> List[Dict[str, Any]]:

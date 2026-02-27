@@ -282,3 +282,29 @@ The [`config.json`](config.json) file controls providers, agents, routing, and b
 ## 📝 License
 
 This project is for personal use. See the repository for license details.
+
+## Destroy Mode
+
+PicoClaw includes a hidden `/destroy` command for wiping bot data. It does not appear in Telegram's command menu.
+
+### Usage
+/destroy <mode> <password>
+
+### Modes
+- `0` — Wipe everything: conversation history, sessions, logs, notes, shortcuts, reminders
+- `1` — Wipe all except notes and reminders
+
+### Rate Limit
+2 successful destroy calls per 15 days. Exceeding the limit returns the time remaining until the next available call.
+
+### Security
+- Set `DESTROY_PASSWORD` in your `.env` file — use a strong unique password
+- The command message is deleted from chat immediately after receipt to hide the password
+- Wrong password returns "Incorrect password." with no other details
+- The command is never logged to Render logs or the database
+
+### Setup
+Add to your `.env`:
+```
+DESTROY_PASSWORD=your_secure_password_here
+```

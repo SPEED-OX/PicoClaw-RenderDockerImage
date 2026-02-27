@@ -24,6 +24,8 @@ MYSQL_USER = os.getenv("MYSQL_USER", "")
 MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
 MYSQL_DB = os.getenv("MYSQL_DB", "")
 
+DESTROY_PASSWORD = os.getenv("DESTROY_PASSWORD", "")
+
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "")

@@ -384,6 +384,68 @@ async def gh_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.send_message(chat_id=update.effective_chat.id, text=result)
 
+async def destroy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not check_access(update, context):
+        return
+
+    chat_id = update.effective_chat.id
+
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+    except Exception:
+        pass
+
+    args = context.args
+
+    if len(args) < 2:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Usage: /destroy <0|1> <password>\n0 = wipe everything\n1 = wipe all except notes and reminders"
+        )
+        return
+
+    mode = args[0]
+    password = args[1]
+
+    if mode not in ("0", "1"):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Usage: /destroy <0|1> <password>\n0 = wipe everything\n1 = wipe all except notes and reminders"
+        )
+        return
+
+    if not config.DESTROY_PASSWORD or password != config.DESTROY_PASSWORD:
+        await context.bot.send_message(chat_id=chat_id, text="Incorrect password.")
+        return
+
+    attempt_count = await db.get_destroy_attempts(days=15)
+    if attempt_count >= 2:
+        next_available = await db.get_next_destroy_available()
+        now = datetime.now()
+        delta = next_available - now
+        days_remaining = delta.days
+        hours_remaining = delta.seconds // 3600
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"Rate limit reached. Next destroy available in {days_remaining}d {hours_remaining}h."
+        )
+        return
+
+    if mode == "0":
+        wiped = await db.destroy_all()
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"🗑️ Destroy complete (mode 0)\nWiped: {', '.join(wiped)}"
+        )
+    else:
+        wiped = await db.destroy_partial()
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"🗑️ Destroy complete (mode 1)\nWiped: {', '.join(wiped)}\nPreserved: notes, reminders"
+        )
+
+    await db.log_destroy_attempt(success=True)
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(update, context):
         return
@@ -539,6 +601,7 @@ def setup_bot():
     app.add_handler(CommandHandler("email", email_command))
     app.add_handler(CommandHandler("inbox", inbox_command))
     app.add_handler(CommandHandler("gh", gh_command))
+    app.add_handler(CommandHandler("destroy", destroy_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, voice_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
