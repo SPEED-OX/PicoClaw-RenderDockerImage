@@ -117,8 +117,26 @@ async def execute(chat_id: int, message: str, media: Optional[Dict[str, Any]] = 
         file_data = media.get("file")
         if not file_data or not isinstance(file_data, bytes):
             return "No valid voice file provided."
-        response = await transcribe_audio(file_data, chat_id=chat_id, status_callback=status_callback)
-        return truncate_response(response)
+
+        await _update_status(bot, chat_id, status_message_id, "🎙️ Transcribing...")
+        transcript = await transcribe_audio(file_data)
+        if not transcript:
+            return "Could not transcribe audio."
+
+        await _update_status(bot, chat_id, status_message_id, "💭 Thinking...")
+        response = await execute(
+            chat_id=chat_id,
+            message=transcript,
+            media=None,
+            bot=bot,
+            status_message_id=status_message_id
+        )
+
+        if isinstance(response, list):
+            response[0] = f"🎙️ {transcript}\n\n{response[0]}"
+        else:
+            response = f"🎙️ {transcript}\n\n{response}"
+        return response
 
     elif action == "vision":
         if not media or media.get("type") != "image":
@@ -282,22 +300,15 @@ Search results:
     except Exception as e:
         return f"Error: {str(e)}"
 
-async def transcribe_audio(audio_bytes: Optional[bytes], chat_id: int = None, status_callback=None) -> str:
+async def transcribe_audio(audio_bytes: Optional[bytes]) -> str:
     if not audio_bytes:
-        return "No audio data provided."
+        return None
     try:
         transcript = await providers.transcribe_audio(audio_bytes, provider_name="groq")
-        if not transcript:
-            return "Could not transcribe audio."
-
-        if chat_id:
-            if status_callback:
-                await status_callback("💭 Processing transcript...")
-            response = await ask_brain_directly(chat_id, f"[Voice]: {transcript}", status_callback=status_callback)
-            return f"🎙️ You said: {transcript}\n\n{response}"
-        return f"🎙️ Transcribed: {transcript}"
+        return transcript if transcript else None
     except Exception as e:
-        return f"Transcription error: {str(e)}"
+        logger.error(f"Transcription failed: {str(e)}")
+        return None
 
 async def analyze_image(image_bytes: Optional[bytes], prompt: str) -> str:
     if not image_bytes:
