@@ -1,20 +1,17 @@
 import aiomysql
 import asyncio
-import re
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Callable, TypeVar
 from src import config
 
 
 def _strip_markdown_for_history(text: str) -> str:
-    """Strip markdown formatting before storing in history to prevent LLM context bleed."""
+    """Truncate oversized messages before storing — prevents context window bloat."""
     if not text:
         return text
-    text = re.sub(r'```[\s\S]*?```', '[code block]', text, flags=re.DOTALL)
-    text = re.sub(r'`[^`\n]+`', '[code]', text)
-    text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    return text.strip()
+    if len(text) > 2000:
+        return text[:500] + "\n[...truncated for history...]"
+    return text
 
 pool: Optional[aiomysql.Pool] = None
 _UNSET = object()

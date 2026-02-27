@@ -90,7 +90,7 @@
   "bot": {
     "name": "PicoClaw",
     "personality": "Concise, sharp, no fluff. Capable assistant not a chatbot.",
-    "max_history": 20,
+    "max_history": 6,
     "commands": [
       ["start", "Start PicoClaw"],
       ["help", "Show all commands"],
