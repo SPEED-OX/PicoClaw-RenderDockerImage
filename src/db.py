@@ -6,11 +6,6 @@ from src import config
 
 
 async def _prepare_for_history(role: str, text: str) -> str:
-    """Prepare message content for DB history storage.
-    - User messages: stored as-is always
-    - Short assistant responses (under 500 chars): stored as-is
-    - Long assistant responses (500+ chars): summarized via LLM before storing
-    """
     if role != "assistant" or not text or len(text) <= 500:
         return text
 
@@ -189,7 +184,6 @@ async def add_message(chat_id: int, role: str, content: str):
 
 @retry_on_operational_error
 async def get_destroy_attempts(days: int = 15) -> int:
-    """Count successful destroy calls in the last N days."""
     cutoff = datetime.now() - timedelta(days=days)
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -202,7 +196,6 @@ async def get_destroy_attempts(days: int = 15) -> int:
 
 @retry_on_operational_error
 async def get_next_destroy_available() -> datetime:
-    """Return datetime when next destroy will be available."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -224,7 +217,6 @@ async def log_destroy_attempt(success: bool):
 
 @retry_on_operational_error
 async def destroy_all() -> list:
-    """Wipe all tables. Returns list of wiped table names."""
     tables = ["conversation_history", "sessions", "command_logs", "notes", "shortcuts", "reminders", "destroy_log"]
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -234,7 +226,6 @@ async def destroy_all() -> list:
 
 @retry_on_operational_error
 async def destroy_partial() -> list:
-    """Wipe all except notes, reminders and destroy_log."""
     tables = ["conversation_history", "sessions", "command_logs", "shortcuts"]
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
