@@ -293,7 +293,7 @@ async def transcribe_audio(audio_bytes: Optional[bytes], chat_id: int = None, st
         if chat_id:
             if status_callback:
                 await status_callback("💭 Processing transcript...")
-            response = await ask_brain_directly(chat_id, f"[Transcribed voice message]: {transcript}", status_callback=status_callback)
+            response = await ask_brain_directly(chat_id, f"[Voice]: {transcript}", status_callback=status_callback)
             return f"🎙️ You said: {transcript}\n\n{response}"
         return f"🎙️ Transcribed: {transcript}"
     except Exception as e:
