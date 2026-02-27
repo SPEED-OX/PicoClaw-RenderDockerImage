@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">🦞 PicoClaw-RenderDockerImage</h1>
+  <h1 align="center">🦞 PicoClaw</h1>
   <p align="center">A personal AI assistant controlled entirely via Telegram</p>
 </p>
 
@@ -7,75 +7,88 @@
   <img src="https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white" alt="Python 3.11">
   <img src="https://img.shields.io/badge/Telegram-Bot%20API-26A5E4?logo=telegram&logoColor=white" alt="Telegram Bot API">
   <img src="https://img.shields.io/badge/Docker-Container-2496ED?logo=docker&logoColor=white" alt="Docker">
-  <img src="https://img.shields.io/badge/Render-Free%20Tier-46E3B7?logo=render&logoColor=white" alt="Render">
-  <img src="https://img.shields.io/badge/MySQL-Database-4479A1?logo=mysql&logoColor=white" alt="MySQL">
+  <img src="https://img.shields.io/badge/Render-Free%20Tier-46E3B7?logo=render&logoColor=white" alt="Render Free Tier">
+  <img src="https://img.shields.io/badge/MySQL-PlanetScale-4479A1?logo=mysql&logoColor=white" alt="MySQL + PlanetScale">
+  <img src="https://img.shields.io/badge/Google-Gemini-4285F4?logo=google&logoColor=white" alt="Google Gemini">
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
 </p>
 
----
-
-PicoClaw is a Telegram-based personal productivity agent that answers questions using multiple LLM providers, runs whitelisted shell commands, manages reminders and notes, searches the web, browses URLs, handles email, and integrates with GitHub — all from a single Docker container deployed on Render.com's free tier.
+PicoClaw is a Telegram-based personal productivity agent powered by a Gemini 2.5 Flash brain. It answers questions, transcribes voice, analyzes images, searches the web, manages reminders and notes, runs shell commands, handles email, and integrates with GitHub — all from a single Docker container on Render's free tier.
 
 ## ✨ Features
 
 | Feature | Description |
 |---|---|
-| **Multi-LLM Chat** | Conversational AI via OpenRouter, Groq, Google Gemini, and DeepSeek |
-| **Smart Agent Routing** | Hybrid keyword + LLM classifier routes messages to specialized agents |
-| **Web Search** | DuckDuckGo search with LLM-powered summarization |
-| **URL Browsing** | Fetch any webpage, extract text, and summarize with LLM |
-| **Reminders** | Persistent reminders stored in MySQL, loaded on startup via APScheduler |
-| **Notes** | Per-chat note management with search and tagging |
-| **Shortcuts** | Custom command shortcuts that expand into full messages |
-| **Command Execution** | Run whitelisted shell commands with output capture |
-| **Email** | Send emails via SMTP and check inbox via IMAP |
-| **GitHub** | List repos, issues, and recent commits via GitHub API |
-| **Session Management** | Per-chat model/agent overrides and message tracking |
-| **Owner-Only Access** | Whitelisted Telegram chat IDs — unauthorized users are silently rejected |
+| Brain-First Architecture | Gemini 2.5 Flash as central brain — decides action for every message |
+| Multi-LLM Providers | OpenRouter, Groq, Google Gemini, DeepSeek with automatic 3-provider fallback chain |
+| Voice Messages | Groq Whisper transcription — voice treated identically to typed text |
+| Image Analysis | Google Gemini vision — describe and answer questions about photos |
+| Web Search | DuckDuckGo search with brain-synthesized answers |
+| URL Browsing | Fetch any webpage and summarize with LLM |
+| Reminders | Persistent reminders via APScheduler, stored in DB |
+| Notes | Per-chat note management with search |
+| Shortcuts | Custom command shortcuts that expand into full messages |
+| Command Execution | Run whitelisted shell commands with output capture |
+| Email | Send via SMTP, check inbox via IMAP |
+| GitHub | List repos, issues, recent commits |
+| Session Management | Per-chat model/agent overrides |
+| Status Indicators | Live status updates: 💭 Thinking... 🔍 Searching... 💻 Coding... |
+| Owner-Only Access | Whitelisted chat IDs — unauthorized users silently rejected |
+| Destroy Mode | Hidden /destroy command to wipe DB data with rate limiting |
 
 ## 🏗️ Architecture
 
 ```
-User → Telegram → POST /webhook → bot.py → agent_router → providers → reply
+User → Telegram → POST /webhook → bot.py → brain.py → orchestrator.py → providers → reply
 ```
 
 ```mermaid
 flowchart LR
-    User[Telegram User] -->|message| TG[Telegram API]
+    User[Telegram User] -->|message/voice/image| TG[Telegram API]
     TG -->|POST /webhook| Server[aiohttp Server]
     Server --> Bot[bot.py Handler]
-    Bot -->|commands| Modules[Search / Browse / Notes / etc.]
-    Bot -->|chat messages| Router[Agent Router]
-    Router -->|keyword match| Agent[Agent Config]
-    Router -->|no match| Classifier[LLM Classifier]
-    Classifier --> Agent
-    Agent --> Provider[Provider Manager]
-    Provider -->|primary| LLM[LLM API]
-    Provider -->|fallback| LLM2[Fallback LLM API]
+    Bot -->|commands| Modules[Search / Notes / Reminders / etc.]
+    Bot -->|chat/voice/image| Brain[brain.py - Gemini 2.5 Flash]
+    Brain -->|JSON decision| Orchestrator[orchestrator.py]
+    Orchestrator -->|search| Search[search.py / browser.py]
+    Orchestrator -->|specialist| Provider[Provider Manager]
+    Orchestrator -->|transcribe| Whisper[Groq Whisper]
+    Orchestrator -->|vision| Vision[Google Gemini]
+    Provider -->|primary + fallback chain| LLM[LLM APIs]
     LLM --> Reply[Reply to User]
-    LLM2 --> Reply
 ```
 
-### Agent Routing
+### Brain Decision Actions
 
-PicoClaw uses a hybrid routing system to direct messages to the right agent:
+| Action | When Used |
+|---|---|
+| answer_directly | Brain knows confidently, no tools needed |
+| search_and_answer | Needs current web data, brain synthesizes after |
+| search_only | User explicitly asked to search, raw results returned |
+| specialist | Routes to reason / creative / code agent |
+| multi_step | Search first, then pass results to specialist |
+| transcribe | Voice message received — Groq Whisper |
+| vision | Image received — Google Gemini vision |
+| embeddings_search | Semantic search through notes |
+| code_fim | Code fill-in-middle via DeepSeek FIM |
 
-1. **Keyword matching** — predefined keywords in [`config.json`](config.json) map to agents
-2. **LLM classifier** — if no keyword matches, an LLM classifies the message
+### Specialist Agents
 
-| Agent | Purpose | Default Provider |
+| Agent | Purpose | Provider |
 |---|---|---|
-| `default` | General conversation | OpenRouter (Mistral 7B) |
-| `reason` | Analytical / reasoning tasks | DeepSeek (Reasoner) |
-| `search` | Web search related | Groq (LLaMA 3 70B) |
-| `creative` | Writing and creative tasks | Google (Gemini 1.5 Flash) |
+| default | General conversation | Google Gemini 2.5 Flash |
+| reason | Analytical and logical tasks | Groq LLaMA 3.3 70B |
+| creative | Writing and creative tasks | Google Gemini 2.5 Flash |
+| code | Code writing and debugging | Groq LLaMA 3.3 70B |
+| search | Web search synthesis | Groq LLaMA 3.3 70B |
 
-Each agent has a **primary model** and a **fallback** for reliability.
+Each agent has a primary model and a fallback chain — if primary fails, next provider is tried automatically.
 
 ## 📁 Project Structure
 
 ```
 picoclaw/
-├── AGENTS.md              # AI agent rules and project spec
+├── AGENTS.md              # AI coding agent rules and project spec
 ├── config.json            # Providers, agents, routing, bot settings
 ├── Dockerfile             # Container definition
 ├── requirements.txt       # Python dependencies
@@ -84,30 +97,31 @@ picoclaw/
 ├── README.md              # You are here
 └── src/
     ├── main.py            # Entry point: aiohttp webhook server
-    ├── bot.py             # Telegram command handlers and message routing
-    ├── config.py          # Loads config.json + resolves env var placeholders
-    ├── db.py              # MySQL: conversation history, reminders, notes, shortcuts, sessions
-    ├── providers.py       # Multi-provider LLM abstraction with fallback
-    ├── agent_router.py    # Hybrid keyword + LLM task routing
-    ├── llm.py             # Thin wrapper over agent_router
-    ├── search.py          # DuckDuckGo web search + LLM summarization
-    ├── browser.py         # URL fetching with BeautifulSoup + LLM summarization
-    ├── notes.py           # Notes CRUD operations
-    ├── shortcuts.py       # Command shortcut expansion
-    ├── scheduler.py       # APScheduler reminders (persistent, loaded from DB)
-    ├── tasks.py           # Whitelisted shell command execution
+    ├── bot.py             # Telegram handlers, voice/photo/message routing
+    ├── brain.py           # Central intelligence — Gemini decides every action
+    ├── orchestrator.py    # Executes brain decisions, calls tools and providers
+    ├── config.py          # Loads config.json + resolves env vars
+    ├── providers.py       # Multi-provider LLM with fallback chain + Whisper
+    ├── db.py              # MySQL: history, reminders, notes, shortcuts, sessions
+    ├── search.py          # DuckDuckGo web search
+    ├── browser.py         # URL fetching + LLM summarization
+    ├── notes.py           # Notes CRUD
+    ├── shortcuts.py       # Shortcut expansion
+    ├── scheduler.py       # APScheduler reminders
+    ├── tasks.py           # Whitelisted shell commands
     ├── email_handler.py   # SMTP send + IMAP inbox
-    └── github_handler.py  # GitHub REST API operations
+    └── github_handler.py  # GitHub REST API
 ```
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- **Python 3.11+**
-- **MySQL database** (e.g., cPanel-hosted MySQL)
-- **Telegram Bot Token** from [@BotFather](https://t.me/BotFather)
-- At least one LLM provider API key (OpenRouter, Groq, Google, or DeepSeek)
+- Python 3.11+
+- MySQL-compatible database (see Free Database Options below)
+- Telegram Bot Token from @BotFather
+- Google AI API key (required — brain depends on it)
+- At least one additional provider key (Groq recommended for fallback)
 
 ### 1. Clone the Repository
 
@@ -122,29 +136,29 @@ cd picoclaw
 cp .env.example .env
 ```
 
-Edit `.env` and fill in the required values:
-
 | Variable | Required | Description |
 |---|---|---|
-| `TELEGRAM_BOT_TOKEN` | ✅ | Bot token from @BotFather |
-| `RENDER_APP_URL` | ✅ | Your Render app URL (no trailing slash) |
-| `ALLOWED_CHAT_IDS` | ✅ | Comma-separated Telegram chat IDs |
-| `MYSQL_HOST` | ✅ | MySQL server hostname |
-| `MYSQL_USER` | ✅ | MySQL username |
-| `MYSQL_PASSWORD` | ✅ | MySQL password |
-| `MYSQL_DB` | ✅ | MySQL database name |
-| `OPENROUTER_API_KEY` | ⚡ | OpenRouter API key |
-| `GROQ_API_KEY` | ⚡ | Groq API key |
-| `GOOGLE_API_KEY` | ⚡ | Google AI API key |
-| `DEEPSEEK_API_KEY` | ⚡ | DeepSeek API key |
-| `EMAIL_ADDRESS` | ❌ | Email for send/inbox features |
-| `EMAIL_PASSWORD` | ❌ | Email app password |
-| `SMTP_SERVER` | ❌ | SMTP server hostname |
-| `IMAP_SERVER` | ❌ | IMAP server hostname |
-| `GITHUB_TOKEN` | ❌ | GitHub personal access token |
-| `GITHUB_USERNAME` | ❌ | GitHub username |
+| TELEGRAM_BOT_TOKEN | ✅ | Bot token from @BotFather |
+| RENDER_APP_URL | ✅ | Your Render app URL (no trailing slash) |
+| ALLOWED_CHAT_IDS | ✅ | Comma-separated Telegram chat IDs |
+| MYSQL_HOST | ✅ | MySQL server hostname |
+| MYSQL_PORT | ✅ | MySQL port (default 3306) |
+| MYSQL_USER | ✅ | MySQL username |
+| MYSQL_PASSWORD | ✅ | MySQL password |
+| MYSQL_DB | ✅ | MySQL database name |
+| GOOGLE_API_KEY | ✅ | Google AI API key — required for brain |
+| GROQ_API_KEY | ⚡ | Groq API key — recommended for fallback + Whisper |
+| OPENROUTER_API_KEY | ⚡ | OpenRouter API key |
+| DEEPSEEK_API_KEY | ⚡ | DeepSeek API key (paid models) |
+| DESTROY_PASSWORD | ⚡ | Password for hidden /destroy command |
+| EMAIL_ADDRESS | ❌ | Email for send/inbox features |
+| EMAIL_PASSWORD | ❌ | Email app password |
+| SMTP_SERVER | ❌ | SMTP server hostname |
+| IMAP_SERVER | ❌ | IMAP server hostname |
+| GITHUB_TOKEN | ❌ | GitHub personal access token |
+| GITHUB_USERNAME | ❌ | GitHub username |
 
-> ✅ = Required &nbsp; ⚡ = At least one provider key required &nbsp; ❌ = Optional
+✅ = Required   ⚡ = At least one required   ❌ = Optional
 
 ### 3. Run Locally
 
@@ -153,9 +167,10 @@ pip install -r requirements.txt
 python -m src.main
 ```
 
-The server starts on port `8080` (or the value of `PORT` env var) with:
-- `GET /health` — health check endpoint (returns 200 OK)
-- `POST /webhook` — Telegram webhook receiver
+Server starts on port 8080 with:
+
+- GET /health — health check (returns 200 OK)
+- POST /webhook — Telegram webhook receiver
 
 ### 4. Run with Docker
 
@@ -164,102 +179,161 @@ docker build -t picoclaw .
 docker run -p 8080:8080 --env-file .env picoclaw
 ```
 
+## 🗄️ Free Database Options
+
+PicoClaw requires a MySQL-compatible database. Two recommended free options:
+
+### Option A — PlanetScale (Recommended)
+
+1. Create a free account at planetscale.com
+2. Create a new database
+3. Go to Connect → select Connect with: mysql2 → copy credentials
+4. Set in .env:
+
+```
+MYSQL_HOST=aws.connect.psdb.cloud
+MYSQL_PORT=3306
+MYSQL_USER=your_planetscale_user
+MYSQL_PASSWORD=your_planetscale_password
+MYSQL_DB=your_database_name
+```
+
+Zero code changes needed — PlanetScale is fully MySQL compatible with aiomysql.
+
+### Option B — cPanel MySQL
+
+If your hosting provider includes cPanel, use the MySQL Databases tool to create a database and user. Set the same env vars with your cPanel host details.
+
 ## ☁️ Deploy to Render
 
-PicoClaw includes a [`render.yaml`](render.yaml) for one-click deployment:
+PicoClaw includes a render.yaml for one-click deployment:
 
-1. Push the repo to GitHub
-2. Connect the repo to [Render](https://render.com)
-3. Create a new **Web Service** → select **Docker** runtime
-4. Set all environment variables in the Render dashboard
-5. Deploy — Render will build the Docker image and start the service
+1. Push repo to GitHub
+2. Connect to Render
+3. Create new Web Service → select Docker runtime
+4. Set all environment variables in Render dashboard
+5. Deploy — Render builds the Docker image and starts the service
 
 The bot auto-registers its webhook URL with Telegram on startup.
 
-> **Note:** Render free tier sleeps after 15 minutes of inactivity. The bot will wake up on the next incoming webhook, but there may be a cold-start delay.
+**Note:** Render free tier sleeps after 15 minutes of inactivity. The bot wakes on the next webhook but may have a cold-start delay.
 
 ## 💬 Telegram Commands
 
 | Command | Description |
 |---|---|
-| `/start` | Introduction message |
-| `/help` | List all available commands |
-| `/search <query>` | Search the web and get an LLM summary |
-| `/browse <url>` | Fetch a URL and summarize its content |
-| `/remind <time> <msg>` | Set a reminder (e.g., `10m`, `2h`, `tomorrow 9`) |
-| `/reminders` | List all active reminders |
-| `/cancelreminder <id>` | Cancel a reminder by ID |
-| `/note <text>` | Save a note |
-| `/notes` | List all saved notes |
-| `/deletenote <id>` | Delete a note by ID |
-| `/run <command>` | Execute a whitelisted shell command |
-| `/model` | View current model |
-| `/model <provider/model>` | Override model for this session |
-| `/model list` | List all available models |
-| `/model reset` | Clear model override |
-| `/agent <name>` | Force a specific agent |
-| `/agent reset` | Return to auto-routing |
-| `/shortcut add <trigger> <expansion>` | Create a command shortcut |
-| `/shortcut list` | List all shortcuts |
-| `/shortcut remove <trigger>` | Delete a shortcut |
-| `/config` | View bot configuration |
-| `/session` | View session state |
-| `/session reset` | Reset session overrides |
-| `/clear` | Clear conversation history |
-| `/status` | Bot uptime and stats |
-| `/email <to> <subject> <body>` | Send an email |
-| `/inbox` | Check last 5 unread emails |
-| `/gh repos` | List GitHub repositories |
-| `/gh issues <repo>` | List open issues for a repo |
-| `/gh commits <repo>` | List recent commits for a repo |
+| /start | Introduction message |
+| /help | List all commands |
+| /search <query> | Search the web |
+| /browse <url> | Fetch and summarize a URL |
+| /remind <time> <msg> | Set a reminder (10m, 2h, tomorrow 9am) |
+| /reminders | List active reminders |
+| /cancelreminder <id> | Cancel a reminder |
+| /note <text> | Save a note |
+| /notes | List all notes |
+| /deletenote <id> | Delete a note |
+| /run <command> | Run a whitelisted shell command |
+| /model | View current model |
+| /model <provider/model> | Override model for this session |
+| /model list | List all available models |
+| /model reset | Clear model override |
+| /agent <name> | Force a specific agent |
+| /agent reset | Return to brain auto-routing |
+| /shortcut add <trigger> <expansion> | Create a shortcut |
+| /shortcut list | List all shortcuts |
+| /shortcut remove <trigger> | Remove a shortcut |
+| /config | View bot configuration |
+| /session | View session state |
+| /session reset | Reset session overrides |
+| /clear | Clear conversation history |
+| /status | Bot uptime and stats |
+| /email <to> <subject> <body> | Send an email |
+| /inbox | Check last 5 unread emails |
+| /gh repos | List GitHub repositories |
+| /gh issues <repo> | List open issues |
+| /gh commits <repo> | List recent commits |
 
-Any message **without** a `/` prefix is treated as a chat message sent to the LLM.
+Any message without `/` prefix goes to the brain for processing. Voice messages and photos are handled automatically.
+
+## 🗑️ Destroy Mode
+
+PicoClaw includes a hidden `/destroy` command for wiping bot data. It does not appear in Telegram's command menu and is never logged to Render or the database.
+
+**Usage:** `/destroy <0|1> <password>`
+
+| Mode | Effect |
+|---|---|
+| 0 | Wipe everything: conversation history, sessions, logs, notes, shortcuts, reminders |
+| 1 | Wipe all except notes, reminders, and destroy_log (rate limit counter preserved) |
+
+**Rate limit:** 2 successful destroy calls per 15 days. Exceeding the limit replies with the exact time remaining.
+
+### Behavior
+
+- Command message deleted from chat immediately — hides password from chat history
+- Wrong password replies "Incorrect password." — no other details
+- Wrong mode or missing args replies with usage hint
+- Rate limit exceeded replies with time remaining e.g. "Rate limit reached. Next destroy available in 12d 4h."
+- Successful destroy replies with exactly which tables were wiped and which were preserved
+- Never logged to Render or DB under any circumstance
+
+### Security
+
+- Password read from DESTROY_PASSWORD env var only — never hardcoded
+- Only ALLOWED_CHAT_IDS users can trigger — all others rejected before destroy logic runs
+- Rate limiting prevents accidental repeated data loss
+
+**Setup:** Add to .env:
+```
+DESTROY_PASSWORD=your_secure_password_here
+```
+
+Use a strong unique password. Anyone with your password and chat access can wipe your data.
 
 ## 🗄️ Database Schema
 
-PicoClaw uses MySQL with the following tables (auto-created on startup):
+Tables auto-created on startup:
 
 | Table | Purpose |
 |---|---|
-| `conversation_history` | Per-chat message history (capped at `MAX_HISTORY` pairs) |
-| `reminders` | Persistent reminders (loaded into APScheduler on startup) |
-| `command_logs` | Shell command execution logs (30-day rolling retention) |
-| `sessions` | Per-chat model/agent overrides and message counts |
-| `notes` | Per-chat notes with optional tags |
-| `shortcuts` | Per-chat command shortcuts (trigger → expansion) |
+| conversation_history | Per-chat message history (capped at max_history pairs) |
+| reminders | Persistent reminders loaded into APScheduler on startup |
+| command_logs | Shell command logs (30-day rolling retention) |
+| sessions | Per-chat model/agent overrides and message counts |
+| notes | Per-chat notes with optional tags |
+| shortcuts | Per-chat shortcuts (trigger → expansion) |
+| destroy_log | Destroy command audit log for rate limiting |
 
 ## 🔒 Security
 
-- **Owner-only access** — only Telegram chat IDs listed in `ALLOWED_CHAT_IDS` can interact with the bot
-- **Silent rejection** — unauthorized users receive no response (no information leakage)
-- **Command whitelist** — `/run` only executes commands from a predefined whitelist: `ls`, `pwd`, `date`, `uptime`, `df`, `free`, `echo`
-- **No hardcoded secrets** — all API keys and credentials are loaded from environment variables
-- **Env var placeholders** — `config.json` uses `${ENV_VAR}` syntax resolved at runtime by [`config.py`](src/config.py:36)
+- Owner-only access — only ALLOWED_CHAT_IDS chat IDs can interact
+- Silent rejection — unauthorized users receive no response
+- Command whitelist — /run only executes: ls, pwd, date, uptime, df, free, echo
+- No hardcoded secrets — all credentials loaded from env vars
+- Destroy rate limiting — /destroy limited to 2 calls per 15 days
+- Destroy message deletion — password never visible in chat history
 
 ## ⚙️ Configuration
 
-The [`config.json`](config.json) file controls providers, agents, routing, and bot settings:
+config.json controls providers, agents, routing, and bot settings:
 
 ```jsonc
 {
+  "brain": { "provider": "google", "model": "gemini-2.5-flash", "fallback": "groq/llama-3.3-70b-versatile" },
   "providers": {
-    "openrouter": { "api_key": "${OPENROUTER_API_KEY}", "base_url": "...", "models": [...] },
+    "google": { "api_key": "${GOOGLE_API_KEY}", "models": [...] },
     "groq": { "api_key": "${GROQ_API_KEY}", "base_url": "...", "models": [...] },
-    "google": { "api_key": "${GOOGLE_API_KEY}", "base_url": "...", "models": [...] },
+    "openrouter": { "api_key": "${OPENROUTER_API_KEY}", "base_url": "...", "models": [...] },
     "deepseek": { "api_key": "${DEEPSEEK_API_KEY}", "base_url": "...", "models": [...] }
   },
   "agents": {
-    "default": { "provider": "openrouter", "model": "...", "fallback": "..." },
-    "reason": { "provider": "deepseek", "model": "...", "fallback": "..." },
-    "search": { "provider": "groq", "model": "...", "fallback": "..." },
-    "creative": { "provider": "google", "model": "...", "fallback": "..." }
+    "default": { "provider": "google", "model": "gemini-2.5-flash", "fallback": "..." },
+    "reason":  { "provider": "groq", "model": "llama-3.3-70b-versatile", "fallback": "..." },
+    "creative":{ "provider": "google", "model": "gemini-2.5-flash", "fallback": "..." },
+    "code":    { "provider": "groq", "model": "llama-3.3-70b-versatile", "fallback": "..." }
   },
-  "routing": {
-    "keywords": { "reason": [...], "search": [...], "creative": [...] },
-    "llm_classifier": true,
-    "classifier_model": "openrouter/mistralai/mistral-7b-instruct:free"
-  },
-  "bot": { "name": "PicoClaw", "personality": "...", "max_history": 20, "commands": [...] }
+  "settings": { "free_only": true, "max_response_chars": 4000 },
+  "bot": { "name": "PicoClaw", "personality": "...", "max_history": 6 }
 }
 ```
 
@@ -267,44 +341,19 @@ The [`config.json`](config.json) file controls providers, agents, routing, and b
 
 | Layer | Technology |
 |---|---|
-| Bot Interface | [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot) v21+ |
-| Webhook Server | [aiohttp](https://docs.aiohttp.org/) |
-| LLM Providers | OpenRouter, Groq, Google Gemini, DeepSeek (via OpenAI-compatible API) |
-| Web Search | [duckduckgo-search](https://pypi.org/project/duckduckgo-search/) |
-| URL Browsing | [httpx](https://www.python-httpx.org/) + [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/) |
-| Scheduler | [APScheduler](https://apscheduler.readthedocs.io/) (AsyncIOScheduler) |
-| Database | MySQL via [aiomysql](https://github.com/aio-libs/aiomysql) |
-| Email | [aiosmtplib](https://aiosmtplib.readthedocs.io/) + [aioimaplib](https://github.com/bamthomas/aioimaplib) |
-| HTML Parsing | [lxml](https://lxml.de/) |
+| Bot Interface | python-telegram-bot v21+ |
+| Webhook Server | aiohttp |
+| Brain | Google Gemini 2.5 Flash (native API) |
+| LLM Providers | OpenRouter, Groq, DeepSeek (OpenAI-compatible API) |
+| Voice Transcription | Groq Whisper (whisper-large-v3-turbo) |
+| Web Search | ddgs (DuckDuckGo) |
+| URL Browsing | httpx + BeautifulSoup4 |
+| Scheduler | APScheduler (AsyncIOScheduler) |
+| Database | MySQL via aiomysql (PlanetScale or cPanel) |
+| Email | aiosmtplib + aioimaplib |
 | Container | Docker (python:3.11-slim) |
-| Hosting | [Render.com](https://render.com) (free tier) |
+| Hosting | Render.com (free tier) |
 
 ## 📝 License
 
-This project is for personal use. See the repository for license details.
-
-## Destroy Mode
-
-PicoClaw includes a hidden `/destroy` command for wiping bot data. It does not appear in Telegram's command menu.
-
-### Usage
-/destroy <mode> <password>
-
-### Modes
-- `0` — Wipe everything: conversation history, sessions, logs, notes, shortcuts, reminders
-- `1` — Wipe all except notes, reminders, and destroy_log (rate limit counter preserved)
-
-### Rate Limit
-2 successful destroy calls per 15 days. Exceeding the limit returns the time remaining until the next available call.
-
-### Security
-- Set `DESTROY_PASSWORD` in your `.env` file — use a strong unique password
-- The command message is deleted from chat immediately after receipt to hide the password
-- Wrong password returns "Incorrect password." with no other details
-- The command is never logged to Render logs or the database
-
-### Setup
-Add to your `.env`:
-```
-DESTROY_PASSWORD=your_secure_password_here
-```
+MIT License — see LICENSE for details.
