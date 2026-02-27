@@ -292,7 +292,7 @@ PicoClaw includes a hidden `/destroy` command for wiping bot data. It does not a
 
 ### Modes
 - `0` — Wipe everything: conversation history, sessions, logs, notes, shortcuts, reminders
-- `1` — Wipe all except notes and reminders
+- `1` — Wipe all except notes, reminders, and destroy_log (rate limit counter preserved)
 
 ### Rate Limit
 2 successful destroy calls per 15 days. Exceeding the limit returns the time remaining until the next available call.

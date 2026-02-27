@@ -441,7 +441,7 @@ async def destroy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wiped = await db.destroy_partial()
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"🗑️ Destroy complete (mode 1)\nWiped: {', '.join(wiped)}\nPreserved: notes, reminders"
+            text=f"🗑️ Destroy complete (mode 1)\nWiped: {', '.join(wiped)}\nPreserved: notes, reminders, destroy_log"
         )
 
     await db.log_destroy_attempt(success=True)

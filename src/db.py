@@ -234,8 +234,8 @@ async def destroy_all() -> list:
 
 @retry_on_operational_error
 async def destroy_partial() -> list:
-    """Wipe all except notes and reminders. Returns list of wiped table names."""
-    tables = ["conversation_history", "sessions", "command_logs", "shortcuts", "destroy_log"]
+    """Wipe all except notes, reminders and destroy_log."""
+    tables = ["conversation_history", "sessions", "command_logs", "shortcuts"]
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             for table in tables:
