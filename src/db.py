@@ -5,13 +5,48 @@ from typing import List, Optional, Dict, Any, Callable, TypeVar
 from src import config
 
 
-def _strip_markdown_for_history(text: str) -> str:
-    """Truncate oversized messages before storing — prevents context window bloat."""
-    if not text:
+async def _prepare_for_history(role: str, text: str) -> str:
+    """Prepare message content for DB history storage.
+    - User messages: stored as-is always
+    - Short assistant responses (under 500 chars): stored as-is
+    - Long assistant responses (500+ chars): summarized via LLM before storing
+    """
+    if role != "assistant" or not text or len(text) <= 500:
         return text
-    if len(text) > 2000:
+
+    try:
+        from src import providers
+
+        summary_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a conversation history summarizer. "
+                    "Summarize the assistant response in 1-2 sentences capturing: "
+                    "what was provided, key details, function/class names if code. "
+                    "Be specific enough that a follow-up request like 'fix that code' "
+                    "or 'tell me more' makes sense. "
+                    "Return only the summary, no preamble."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Summarize this assistant response:\n\n{text[:3000]}"
+            }
+        ]
+
+        summary = await providers.call_with_fallback(
+            "groq/llama-3.1-8b-instant",
+            summary_messages,
+            fallback=["openrouter/mistralai/mistral-7b-instruct:free"],
+        )
+
+        if summary and len(summary) < len(text):
+            return f"[Summary: {summary.strip()}]"
         return text[:500] + "\n[...truncated for history...]"
-    return text
+
+    except Exception:
+        return text[:500] + "\n[...truncated for history...]"
 
 pool: Optional[aiomysql.Pool] = None
 _UNSET = object()
@@ -135,8 +170,7 @@ async def close_db():
 
 @retry_on_operational_error
 async def add_message(chat_id: int, role: str, content: str):
-    if role == "assistant":
-        content = _strip_markdown_for_history(content)
+    content = await _prepare_for_history(role, content)
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(

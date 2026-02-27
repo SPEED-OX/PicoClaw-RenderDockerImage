@@ -17,9 +17,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="PicoClaw here. Personal assistant, Telegram-controlled.\n\n"
-             "Commands: /help\n\n"
-             "Or just message me directly."
+        text="Hello! I am PicoClaw 🦞, How may I assist today\n\nIf You need anything specific use /help"
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
